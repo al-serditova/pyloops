@@ -6,7 +6,6 @@
 using namespace loops;
 Context ctx;
 
-// Функция hi()
 extern "C"
 {
 typedef struct {
@@ -29,7 +28,6 @@ static int PyIReg_init(PyIReg *self, PyObject *args, PyObject *kwds) {
     // Здесь мы создаем реальный объект IReg из твоей библиотеки loops
     // Например, просто создаем новый экземпляр регистра
     self->reg = new loops::IReg(); 
-    printf("Privet\n");
     if (self->reg == nullptr) {
         PyErr_SetString(PyExc_RuntimeError, "Could not allocate IReg");
         return -1;
@@ -42,9 +40,87 @@ static void PyIReg_dealloc(PyIReg *self) {
     if (self->reg) {
         delete self->reg; // Удаляем C++ объект
     }
-    printf("Poka\n");
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
+
+/////////////////
+
+typedef struct {
+    PyObject_HEAD
+    loops::Func* func; // Указатель на объект Func из библиотеки
+} PyFunc;
+
+// Метод printAssembly()
+static PyObject* PyFunc_printAssembly(PyFunc* self, PyObject* args) {
+    if (self->func) {
+        self->func->printAssembly(std::cout);
+    }
+    Py_RETURN_NONE;
+}
+
+// Метод printIR()
+static PyObject* PyFunc_printIR(PyFunc* self, PyObject* args) {
+    if (self->func) {
+        self->func->printIR(std::cout);
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyFunc_ptr(PyFunc* self, PyObject* args) {
+    if (!self->func) {
+        PyErr_SetString(PyExc_RuntimeError, "Func object is not initialized");
+        return NULL;
+    }
+    
+    // Получаем указатель на машинный код
+    void* p = self->func->ptr();
+    
+    // Возвращаем его в Python как целое число (адрес)
+    // В Python 3 это PyLong_FromVoidPtr
+    return PyLong_FromVoidPtr(p);
+}
+
+// Таблица методов для класса Func
+static PyMethodDef PyFunc_methods[] = {
+    {"print_assembly", (PyCFunction)PyFunc_printAssembly, METH_NOARGS, "Print assembly code"},
+    {"print_ir", (PyCFunction)PyFunc_printIR, METH_NOARGS, "Print IR code"},
+    {"ptr", (PyCFunction)PyFunc_ptr, METH_NOARGS, "Returns the machine code address."},
+    {NULL, NULL, 0, NULL}
+};
+
+static void PyFunc_dealloc(PyFunc* self) {
+    if (self->func) {
+        delete self->func;
+    }
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyTypeObject PyFuncType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "pyloops.Func",
+    .tp_basicsize = sizeof(PyFunc),
+    .tp_dealloc = (destructor)PyFunc_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_doc = "Loops Function Object",
+    .tp_methods = PyFunc_methods, // Подключаем методы выше
+};
+
+static PyObject* py_getFunc(PyObject* self, PyObject* args) {
+    const char* name;
+    if (!PyArg_ParseTuple(args, "s", &name)) return NULL;
+    // 1. Получаем реальный Func из контекста loops
+    loops::Func f = ctx.getFunc(name);
+
+    // 2. Создаем объект PyFunc для Python
+    PyFunc* py_f = PyObject_New(PyFunc, &PyFuncType);
+    if (py_f) {
+        // Копируем объект Func в кучу, чтобы PyFunc владел им
+        py_f->func = new loops::Func(f); 
+    }
+    return (PyObject*)py_f;
+}
+
+/////////////////
 
 static PyObject* PyIReg_iadd(PyObject* self, PyObject* other);
 
@@ -100,7 +176,6 @@ static PyObject* PyIReg_iadd(PyObject* self, PyObject* other) {
     if (a->reg && b->reg) {
         *(a->reg) += *(b->reg); 
     }
-    printf("hahahah\n");
 
     // 3. ВАЖНО: операторы inplace (+=, -=) ДОЛЖНЫ возвращать self
     // с увеличенным счетчиком ссылок.
@@ -129,9 +204,6 @@ static PyObject* PyStartFunc(PyObject* self, PyObject* args) {
     
     getImpl(&ctx)->startFunc(name, {reg_a->reg, reg_b->reg});
 
-    // Теперь можно использовать reg_a->reg и reg_b->reg в логике loops
-    std::cout << "Creating new loops function: " << name << std::endl;
-
     Py_RETURN_NONE;
 }
 
@@ -146,8 +218,6 @@ static PyObject* PyReturn(PyObject* self, PyObject* obj_a) {
     USE_CONTEXT_(ctx);
     RETURN_(*(reg_a->reg));
 
-    std::cout << "Returning some register" << std::endl;
-
     Py_RETURN_NONE;
 }
 
@@ -157,26 +227,14 @@ static PyObject *PyEndFunc(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
-static PyObject *py_finish(PyObject *self, PyObject *args)
-{
-    USE_CONTEXT_(ctx); //DUBUG: use it in every wrapper.
-    loops::Func func = ctx.getFunc("a_plus_b");
-    func.printIR(std::cout);
-    func.printAssembly(std::cout);
-    typedef int64_t (*a_plus_b_f)(int64_t a, int64_t b);
-    a_plus_b_f tested = reinterpret_cast<a_plus_b_f>(func.ptr());
-    printf("PyLoops: %d + %d = %d\n", 5, 1, (int)tested(5, 1));
-    Py_RETURN_NONE;
-}
-
 }
 
 // Таблица методов
 static PyMethodDef PyloopsMethods[] = {
-    {"finish", py_finish, METH_NOARGS, "Print something."}, // Description of function.
     {"start_func", PyStartFunc, METH_VARARGS, "Create new loops function."},
-    {"Return", PyReturn, METH_O, "Loops function's return."},
+    {"return_", PyReturn, METH_O, "Loops function's return."},
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
+    {"get_func", py_getFunc, METH_VARARGS, "Returns a Func object by name"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
@@ -191,8 +249,12 @@ static struct PyModuleDef pyloopsmodule = {
 PyMODINIT_FUNC PyInit_pyloops(void)
 {
     PyObject *m;
-    // 1. Готовим тип (заполняем внутренние слоты Python)
+
+    // 1. Готовим ВСЕ типы
     if (PyType_Ready(&PyIRegType) < 0)
+        return NULL;
+    
+    if (PyType_Ready(&PyFuncType) < 0)
         return NULL;
 
     // 2. Создаем модуль
@@ -204,7 +266,16 @@ PyMODINIT_FUNC PyInit_pyloops(void)
     Py_INCREF(&PyIRegType);
     if (PyModule_AddObject(m, "IReg", (PyObject *)&PyIRegType) < 0) {
         Py_DECREF(&PyIRegType);
-        Py_DECREF(m);
+        Py_XDECREF(m); // Используем XDECREF для безопасности
+        return NULL;
+    }
+
+    // 4. Добавляем класс Func в модуль
+    Py_INCREF(&PyFuncType);
+    if (PyModule_AddObject(m, "Func", (PyObject *)&PyFuncType) < 0) {
+        // Если не удалось добавить Func, нужно почистить всё
+        Py_DECREF(&PyFuncType);
+        Py_XDECREF(m); 
         return NULL;
     }
 
