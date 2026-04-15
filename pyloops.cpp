@@ -1,109 +1,17 @@
 #include <Python.h>
+#include "common.hpp"
+#include "ireg.hpp"
+#include "func.hpp"
+
 #include <iostream>
 #include "loops/loops.hpp"
 #include "/home/vtdrs/work/loops/src/common.hpp"
 
 using namespace loops;
-Context ctx;
+// Context ctx;
 
 extern "C"
 {
-typedef struct {
-    PyObject_HEAD
-    IReg* reg; // Указатель на реальный IReg из loops
-} PyIReg;
-
-static PyObject *PyIReg_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
-    PyIReg *self;
-    self = (PyIReg *)type->tp_alloc(type, 0);
-    if (self != NULL) {
-        // Инициализируем указатель на C++ объект нулевым значением
-        self->reg = nullptr;
-    }
-    return (PyObject *)self;
-}
-
-// 2. tp_init: Инициализация (аналог __init__)
-static int PyIReg_init(PyIReg *self, PyObject *args, PyObject *kwds) {
-    // Здесь мы создаем реальный объект IReg из твоей библиотеки loops
-    // Например, просто создаем новый экземпляр регистра
-    self->reg = new loops::IReg(); 
-    if (self->reg == nullptr) {
-        PyErr_SetString(PyExc_RuntimeError, "Could not allocate IReg");
-        return -1;
-    }
-    return 0;
-}
-
-// 3. Не забываем про деструктор (tp_dealloc), чтобы не было утечек памяти!
-static void PyIReg_dealloc(PyIReg *self) {
-    if (self->reg) {
-        delete self->reg; // Удаляем C++ объект
-    }
-    Py_TYPE(self)->tp_free((PyObject *)self);
-}
-
-/////////////////
-
-typedef struct {
-    PyObject_HEAD
-    loops::Func* func; // Указатель на объект Func из библиотеки
-} PyFunc;
-
-// Метод printAssembly()
-static PyObject* PyFunc_printAssembly(PyFunc* self, PyObject* args) {
-    if (self->func) {
-        self->func->printAssembly(std::cout);
-    }
-    Py_RETURN_NONE;
-}
-
-// Метод printIR()
-static PyObject* PyFunc_printIR(PyFunc* self, PyObject* args) {
-    if (self->func) {
-        self->func->printIR(std::cout);
-    }
-    Py_RETURN_NONE;
-}
-
-static PyObject* PyFunc_ptr(PyFunc* self, PyObject* args) {
-    if (!self->func) {
-        PyErr_SetString(PyExc_RuntimeError, "Func object is not initialized");
-        return NULL;
-    }
-    
-    // Получаем указатель на машинный код
-    void* p = self->func->ptr();
-    
-    // Возвращаем его в Python как целое число (адрес)
-    // В Python 3 это PyLong_FromVoidPtr
-    return PyLong_FromVoidPtr(p);
-}
-
-// Таблица методов для класса Func
-static PyMethodDef PyFunc_methods[] = {
-    {"print_assembly", (PyCFunction)PyFunc_printAssembly, METH_NOARGS, "Print assembly code"},
-    {"print_ir", (PyCFunction)PyFunc_printIR, METH_NOARGS, "Print IR code"},
-    {"ptr", (PyCFunction)PyFunc_ptr, METH_NOARGS, "Returns the machine code address."},
-    {NULL, NULL, 0, NULL}
-};
-
-static void PyFunc_dealloc(PyFunc* self) {
-    if (self->func) {
-        delete self->func;
-    }
-    Py_TYPE(self)->tp_free((PyObject*)self);
-}
-
-static PyTypeObject PyFuncType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "pyloops.Func",
-    .tp_basicsize = sizeof(PyFunc),
-    .tp_dealloc = (destructor)PyFunc_dealloc,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_doc = "Loops Function Object",
-    .tp_methods = PyFunc_methods, // Подключаем методы выше
-};
 
 static PyObject* py_getFunc(PyObject* self, PyObject* args) {
     const char* name;
@@ -120,89 +28,45 @@ static PyObject* py_getFunc(PyObject* self, PyObject* args) {
     return (PyObject*)py_f;
 }
 
-/////////////////
-
-static PyObject* PyIReg_iadd(PyObject* self, PyObject* other);
-
-static PyNumberMethods PyIReg_as_number = {
-    0,                          // nb_add
-    0,                          // nb_subtract
-    0,                          // nb_multiply
-    0,                          // nb_remainder
-    0,                          // nb_divmod
-    0,                          // nb_power
-    0,                          // nb_negative
-    0,                          // nb_positive
-    0,                          // nb_absolute
-    0,                          // nb_bool
-    0,                          // nb_invert
-    0,                          // nb_lshift
-    0,                          // nb_rshift
-    0,                          // nb_and
-    0,                          // nb_xor
-    0,                          // nb_or
-    0,                          // nb_int
-    0,                          // reserved
-    0,                          // nb_float
-    (binaryfunc)PyIReg_iadd,    // nb_inplace_add  <-- ВОТ ОН!
-    // ... остальные поля можно оставить нулевыми
-};
-
-static PyTypeObject PyIRegType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "pyloops.IReg",
-    .tp_basicsize = sizeof(PyIReg),
-    .tp_itemsize = 0,
-    .tp_dealloc = (destructor)PyIReg_dealloc,
-    .tp_as_number = &PyIReg_as_number,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_doc = "Loops Register",
-    .tp_init = (initproc)PyIReg_init,
-    .tp_new = PyIReg_new,
-};
-
-static PyObject* PyIReg_iadd(PyObject* self, PyObject* other) {
-    // 1. Проверяем, что 'other' — это тоже наш регистр
-    // (Если хочешь складывать с числами, тут нужно добавить проверку на PyLong)
-    if (!PyObject_TypeCheck(other, &PyIRegType)) {
-        PyErr_SetString(PyExc_TypeError, "Operand must be an IReg");
-        return NULL;
-    }
-
-    PyIReg* a = (PyIReg*)self;
-    PyIReg* b = (PyIReg*)other;
-
-    // 2. Выполняем реальную операцию в твоей библиотеке loops
-    if (a->reg && b->reg) {
-        *(a->reg) += *(b->reg); 
-    }
-
-    // 3. ВАЖНО: операторы inplace (+=, -=) ДОЛЖНЫ возвращать self
-    // с увеличенным счетчиком ссылок.
-    Py_INCREF(self);
-    return self;
-}
-
 static PyObject* PyStartFunc(PyObject* self, PyObject* args) {
-    const char* name;
-    PyObject *obj_a, *obj_b;
-
-    // Парсим аргументы: s (string), O (Object), O (Object)
-    if (!PyArg_ParseTuple(args, "sOO", &name, &obj_a, &obj_b)) {
-        return NULL; // Если аргументы не подошли, Python выбросит TypeError
-    }
-
-    // Проверка, что переданные объекты действительно являются нашими IReg
-    if (!PyObject_TypeCheck(obj_a, &PyIRegType) || !PyObject_TypeCheck(obj_b, &PyIRegType)) {
-        PyErr_SetString(PyExc_TypeError, "Arguments must be of type IReg");
+    Py_ssize_t nargs = PyTuple_Size(args);
+    if (nargs < 1) {
+        PyErr_SetString(PyExc_TypeError, "start_func expects at least 1 argument (name)");
         return NULL;
     }
 
-    // Приведение типов к нашей структуре
-    PyIReg* reg_a = (PyIReg*)obj_a;
-    PyIReg* reg_b = (PyIReg*)obj_b;
-    
-    getImpl(&ctx)->startFunc(name, {reg_a->reg, reg_b->reg});
+    // 1. Извлекаем имя функции (первый аргумент)
+    PyObject* py_name = PyTuple_GetItem(args, 0);
+    if (!PyUnicode_Check(py_name)) {
+        PyErr_SetString(PyExc_TypeError, "First argument must be a string (function name)");
+        return NULL;
+    }
+    const char* name = PyUnicode_AsUTF8(py_name);
+
+    // 2. Собираем остальные аргументы в вектор указателей на IReg
+    std::vector<loops::IReg*> regs;
+    for (Py_ssize_t i = 1; i < nargs; ++i) {
+        PyObject* item = PyTuple_GetItem(args, i);
+
+        // Проверяем, что это наш IReg
+        if (!PyObject_TypeCheck(item, &PyIRegType)) {
+            PyErr_Format(PyExc_TypeError, "Argument %zd must be of type IReg", i);
+            return NULL;
+        }
+
+        PyIReg* py_reg = (PyIReg*)item;
+        if (py_reg->reg == nullptr) {
+            PyErr_Format(PyExc_RuntimeError, "Register %zd is uninitialized", i);
+            return NULL;
+        }
+        
+        regs.push_back(py_reg->reg);
+    }
+
+    // 3. Вызываем startFunc из библиотеки loops
+    // Передаем вектор напрямую (если API принимает std::initializer_list, 
+    // возможно, придется вызвать перегрузку, принимающую вектор или массив)
+    getImpl(&ctx)->startFunc(name, regs);
 
     Py_RETURN_NONE;
 }

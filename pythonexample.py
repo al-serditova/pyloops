@@ -5,9 +5,10 @@ import pyloops
 
 a = pyloops.IReg()
 b = pyloops.IReg()
+c = pyloops.IReg()
 
-pyloops.start_func("a_plus_b", a, b) #Only a,b signature.
-a += b
+pyloops.start_func("a_plus_b", a, b, c) #Only a,b signature.
+a.assign = b
 pyloops.return_(a)
 pyloops.end_func()
 
@@ -16,6 +17,6 @@ func.print_ir()
 func.print_assembly()
 
 addr = func.ptr()
-executable_func = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(addr)
-res = executable_func(5, 1)
+executable_func = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(addr)
+res = executable_func(5, 3, 1)
 print(res)

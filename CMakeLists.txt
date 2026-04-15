@@ -8,7 +8,7 @@ find_package(Python3 REQUIRED COMPONENTS Development)
 # DUBUG: hardcoded link
 include_directories("/home/vtdrs/work/loops/include/")
 
-add_library(pyloops MODULE pyloops.cpp)
+add_library(pyloops MODULE pyloops.cpp func.cpp func.hpp ireg.cpp ireg.hpp common.cpp common.hpp)
 
 target_include_directories(pyloops PRIVATE ${Python3_INCLUDE_DIRS})
 target_link_libraries(pyloops PRIVATE ${Python3_LIBRARIES})
