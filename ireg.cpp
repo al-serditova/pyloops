@@ -3,6 +3,14 @@
 extern "C"
 {
 
+IExpr& PyIReg::getExpr()
+{
+    assert(expr != nullptr || reg != nullptr);
+    if(expr == NULL)
+        expr = new IExpr(*reg);
+    return *expr;
+}
+
 PyObject *PyIReg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     PyIReg *self;
@@ -11,6 +19,7 @@ PyObject *PyIReg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     {
         // Инициализируем указатель на C++ объект нулевым значением
         self->reg = nullptr;
+        self->expr = nullptr;
     }
     return (PyObject *)self;
 }
@@ -18,22 +27,71 @@ PyObject *PyIReg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 // 2. tp_init: Инициализация (аналог __init__)
 int PyIReg_init(PyIReg *self, PyObject *args, PyObject *kwds)
 {
-    // Здесь мы создаем реальный объект IReg из твоей библиотеки loops
-    // Например, просто создаем новый экземпляр регистра
-    self->reg = new loops::IReg(); 
-    if (self->reg == nullptr)
-    {
+    if (self->reg)
+        delete self->reg;
+    if (self->expr)
+        delete self->expr;
+
+    self->reg = nullptr;
+    self->expr = nullptr;
+
+    PyObject *maybe_other = nullptr;
+
+    // Парсим аргументы: "|" означает, что аргументы после него опциональны.
+    // "O" — ожидаем объект.
+    if (!PyArg_ParseTuple(args, "|O", &maybe_other)) {
+        return -1; // ParseTuple сам выставит ошибку типа
+    }
+
+if (maybe_other != nullptr && maybe_other != Py_None) {
+        // Сценарий 1: Передан другой IReg
+        if (PyObject_TypeCheck(maybe_other, &PyIRegType)) {
+            PyIReg *other = (PyIReg *)maybe_other;
+            if (other->reg != nullptr || other->expr != nullptr) {
+                self->reg = new loops::IReg(other->getExpr());
+            } else {
+                PyErr_SetString(PyExc_RuntimeError, "Source register is uninitialized");
+                return -1;
+            }
+        }
+        // Сценарий 2: Передано целое число (int64_t)
+        else if (PyLong_Check(maybe_other)) {
+            int64_t val = (int64_t)PyLong_AsLongLong(maybe_other);
+            
+            // Если возникла ошибка конвертации (число слишком большое)
+            if (val == -1 && PyErr_Occurred()) {
+                return -1;
+            }
+            USE_CONTEXT_(ctx);
+            // Создаем регистр с константой (immediate)
+            self->reg = new loops::IReg(CONST_(val));
+        }
+        else {
+            PyErr_SetString(PyExc_TypeError, "Argument must be an IReg object or an integer");
+            return -1;
+        }
+    } 
+    else {
+        // Сценарий 3: Без аргументов
+        self->reg = new loops::IReg();
+    }
+
+    if (self->reg == nullptr) {
         PyErr_SetString(PyExc_RuntimeError, "Could not allocate IReg");
         return -1;
     }
+
     return 0;
 }
+
 
 // 3. Не забываем про деструктор (tp_dealloc), чтобы не было утечек памяти!
 void PyIReg_dealloc(PyIReg *self)
 {
     if (self->reg)
         delete self->reg; // Удаляем C++ объект
+    if (self->expr)
+        delete self->expr; // Удаляем C++ объект
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -50,7 +108,7 @@ PyObject* PyIReg_iadd(PyObject* self, PyObject* other) {
 
     // 2. Выполняем реальную операцию в твоей библиотеке loops
     if (a->reg && b->reg) {
-        *(a->reg) += *(b->reg); 
+        *(a->reg) += b->getExpr();
     }
 
     // 3. ВАЖНО: операторы inplace (+=, -=) ДОЛЖНЫ возвращать self
@@ -99,7 +157,7 @@ int PyIReg_set_assign(PyIReg* self, PyObject* value, void* closure) {
 
     // 2. Выполняем присваивание в loops
     if (self->reg && other->reg) {
-        *(self->reg) = *(other->reg); // Генерируем MOV инструкцию
+        *(self->reg) = other->getExpr(); // Генерируем MOV инструкцию
     }
 
     return 0; // Успех
@@ -128,5 +186,4 @@ PyTypeObject PyIRegType = {
     .tp_init = (initproc)PyIReg_init,
     .tp_new = PyIReg_new,
 };
-
 }

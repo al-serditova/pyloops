@@ -12,7 +12,9 @@ extern PyTypeObject PyIRegType;
 
 typedef struct {
     PyObject_HEAD
-    IReg* reg; // Указатель на реальный IReg из loops
+    IReg* reg;    // Указатель на реальный IReg из loops
+    IExpr* expr;
+    IExpr& getExpr();
 } PyIReg;
 
 // 1. PyIReg_new - аллокатор

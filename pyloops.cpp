@@ -6,6 +6,8 @@
 #include <iostream>
 #include "loops/loops.hpp"
 #include "/home/vtdrs/work/loops/src/common.hpp"
+#include "/home/vtdrs/work/loops/src/code_collecting.hpp"
+#include "/home/vtdrs/work/loops/src/func_impl.hpp"
 
 using namespace loops;
 // Context ctx;
@@ -26,6 +28,34 @@ static PyObject* py_getFunc(PyObject* self, PyObject* args) {
         py_f->func = new loops::Func(f); 
     }
     return (PyObject*)py_f;
+}
+
+static PyObject* py_load_i32(PyObject* self, PyObject* arg) {
+    // 1. Проверяем, что пришел именно наш объект IReg
+    if (!PyObject_TypeCheck(arg, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Argument must be an IReg (acting as a pointer)");
+        return NULL;
+    }
+
+    PyIReg* py_ptr = (PyIReg*)arg;
+
+    // Проверка на инициализацию внутреннего регистра
+    if (!py_ptr->reg) {
+        PyErr_SetString(PyExc_RuntimeError, "Pointer register is not initialized");
+        return NULL;
+    }
+
+    // 2. Генерируем инструкцию загрузки.
+
+    // 3. Создаем новый объект PyIReg для Python
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+
+    // Инициализируем указатель новым выделенным в куче регистром
+    py_res->reg = NULL;
+    py_res->expr = new IExpr(load_<int32_t>(py_ptr->getExpr()));
+
+    return (PyObject*)py_res;
 }
 
 static PyObject* PyStartFunc(PyObject* self, PyObject* args) {
@@ -91,6 +121,100 @@ static PyObject *PyEndFunc(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+// static PyObject *PyHi(PyObject *self, PyObject *args)
+// {
+//     using namespace loops;
+//     IReg ptr, n, minpos_addr, maxpos_addr;
+//     USE_CONTEXT_(ctx);
+//     STARTFUNC_("minmaxloc", &ptr, &n, &minpos_addr, &maxpos_addr)
+//     {
+//         IReg i = CONST_(0);
+//         IReg minpos = CONST_(0);
+//         IReg maxpos = CONST_(0);
+//         IReg minval = load_<int>(ptr);
+//         IReg maxval = minval;
+//         n *= sizeof(int);
+//         WHILE_(i < n)
+//         {
+//             IReg x = load_<int>(ptr, i);
+//             IF_(x < minval)
+//             {
+//                 minval = x;
+//                 minpos = i;
+//             }
+//             IF_(x > maxval)
+//             {
+//                 maxval = x;
+//                 maxpos = i;
+//             }
+//             i += sizeof(int);
+//         }
+//         IReg elemsize = CONST_(sizeof(int));
+//         minpos /= elemsize;
+//         maxpos /= elemsize;
+//         store_<int>(minpos_addr, minpos);
+//         store_<int>(maxpos_addr, maxpos);
+//         RETURN_(0);
+//     }
+//     Py_RETURN_NONE;
+// }
+
+static PyObject *PyHi(PyObject *self, PyObject *args)
+{
+    using namespace loops;
+    IReg ptr, n, minpos_addr, maxpos_addr;
+    USE_CONTEXT_(ctx);
+    STARTFUNC_("minmaxloc", &ptr, &n, &minpos_addr, &maxpos_addr)
+    {
+        IReg i = CONST_(0);
+        IReg minpos = CONST_(0);
+        IReg maxpos = CONST_(0);
+        IReg minval = load_<int>(ptr);
+        IReg maxval = minval;
+        n *= sizeof(int);
+
+        getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
+        CodeCollecting* coll = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
+        IExpr condition = (i < n);
+        Expr condition_(condition.notype());        
+        coll->while_(condition_);
+        {
+            IReg x = load_<int>(ptr, i);
+
+            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
+            CodeCollecting* coll1 = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
+            IExpr condition1 = (x < minval);
+            Expr condition1_(condition1.notype());        
+            coll1->if_(condition1_);
+            {
+                minval = x;
+                minpos = i;
+            }
+            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endif_();
+
+            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
+            CodeCollecting* coll2 = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
+            IExpr condition2 = (x > maxval);
+            Expr condition2_(condition2.notype());
+            coll2->if_(condition2_);
+            {
+                maxval = x;
+                maxpos = i;
+            }
+            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endif_();
+            i += sizeof(int);
+        }
+        getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endwhile_();        
+        IReg elemsize = CONST_(sizeof(int));
+        minpos /= elemsize;
+        maxpos /= elemsize;
+        store_<int>(minpos_addr, minpos);
+        store_<int>(maxpos_addr, maxpos);
+        RETURN_(0);
+    }
+    Py_RETURN_NONE;
+}
+
 }
 
 // Таблица методов
@@ -99,6 +223,8 @@ static PyMethodDef PyloopsMethods[] = {
     {"return_", PyReturn, METH_O, "Loops function's return."},
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
     {"get_func", py_getFunc, METH_VARARGS, "Returns a Func object by name"},
+    {"hi", PyHi, METH_NOARGS, "End function."},
+    {"load_i32", (PyCFunction)py_load_i32, METH_O, "Load i32 from address held in IReg"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
