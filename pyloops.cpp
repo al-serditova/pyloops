@@ -79,6 +79,88 @@ static PyObject* PyLoad_i32(PyObject* self, PyObject* args) {
     return (PyObject*)py_res;
 }
 
+static PyObject* PyStore_i32(PyObject* self, PyObject* args) {
+    PyObject *obj_base = nullptr, *obj_offset = nullptr, *obj_val = nullptr;
+
+    // Парсим от 2 до 3 аргументов
+    if (!PyArg_ParseTuple(args, "OO|O", &obj_base, &obj_offset, &obj_val)) {
+        return NULL;
+    }
+
+    try {
+        // База всегда должна быть регистром (адрес)
+        if (!PyObject_TypeCheck(obj_base, &PyIRegType)) {
+            PyErr_SetString(PyExc_TypeError, "Base must be an IReg");
+            return NULL;
+        }
+        loops::IExpr base = ((PyIReg*)obj_base)->getExpr();
+
+        // Сценарий 1: store_i32(base, value) -> 2 аргумента
+        if (obj_val == nullptr) {
+            if (PyObject_TypeCheck(obj_offset, &PyIRegType)) {
+                loops::store_<int32_t>(base, ((PyIReg*)obj_offset)->getExpr());
+            } else if (PyLong_Check(obj_offset)) {
+                loops::store_<int32_t>(base, (int64_t)PyLong_AsLongLong(obj_offset));
+            } else {
+                PyErr_SetString(PyExc_TypeError, "Value must be IReg or int");
+                return NULL;
+            }
+        }
+        // Сценарий 2: store_i32(base, offset, value) -> 3 аргумента
+        else {
+            if (PyObject_TypeCheck(obj_offset, &PyIRegType))
+            {
+                loops::IExpr offset = ((PyIReg*)obj_offset)->getExpr();
+                if (PyObject_TypeCheck(obj_val, &PyIRegType))
+                {
+                    loops::IExpr val = ((PyIReg*)obj_val)->getExpr();
+                    loops::store_<int32_t>(base, offset, val);
+                }
+                else if (PyLong_Check(obj_val))
+                {
+                    int64_t val = PyLong_AsLongLong(obj_val);
+                    loops::store_<int32_t>(base, offset, val);
+                }
+                else
+                {
+                    PyErr_SetString(PyExc_TypeError, "Stored must be IReg or int");
+                    return NULL;
+                }
+            }
+            else if (PyLong_Check(obj_offset))
+            {
+                int64_t offset = PyLong_AsLongLong(obj_offset);
+                if (PyObject_TypeCheck(obj_val, &PyIRegType))
+                {
+                    loops::IExpr val = ((PyIReg*)obj_val)->getExpr();
+                    loops::store_<int32_t>(base, offset, val);
+                }
+                else if (PyLong_Check(obj_val))
+                {
+                    int64_t val = PyLong_AsLongLong(obj_val);
+                    loops::store_<int32_t>(base, offset, val);
+                }
+                else
+                {
+                    PyErr_SetString(PyExc_TypeError, "Stored must be IReg or int");
+                    return NULL;
+                }                
+            }
+            else
+            {
+                PyErr_SetString(PyExc_TypeError, "Offset must be IReg or int");
+                return NULL;
+            }
+        }
+    } catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
 static PyObject* PyIf(PyObject* self, PyObject* obj_a) {
     if (!PyObject_TypeCheck(obj_a, &PyIRegType)) {
         PyErr_SetString(PyExc_TypeError, "Expected an IReg object");
@@ -183,44 +265,6 @@ static PyObject *PyEndFunc(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
-// static PyObject *PyHi(PyObject *self, PyObject *args)
-// {
-//     using namespace loops;
-//     IReg ptr, n, minpos_addr, maxpos_addr;
-//     USE_CONTEXT_(ctx);
-//     STARTFUNC_("minmaxloc", &ptr, &n, &minpos_addr, &maxpos_addr)
-//     {
-//         IReg i = CONST_(0);
-//         IReg minpos = CONST_(0);
-//         IReg maxpos = CONST_(0);
-//         IReg minval = load_<int>(ptr);
-//         IReg maxval = minval;
-//         n *= sizeof(int);
-//         WHILE_(i < n)
-//         {
-//             IReg x = load_<int>(ptr, i);
-//             IF_(x < minval)
-//             {
-//                 minval = x;
-//                 minpos = i;
-//             }
-//             IF_(x > maxval)
-//             {
-//                 maxval = x;
-//                 maxpos = i;
-//             }
-//             i += sizeof(int);
-//         }
-//         IReg elemsize = CONST_(sizeof(int));
-//         minpos /= elemsize;
-//         maxpos /= elemsize;
-//         store_<int>(minpos_addr, minpos);
-//         store_<int>(maxpos_addr, maxpos);
-//         RETURN_(0);
-//     }
-//     Py_RETURN_NONE;
-// }
-
 static PyObject *PyHi(PyObject *self, PyObject *args)
 {
     using namespace loops;
@@ -287,6 +331,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"get_func", PyGetFunc, METH_VARARGS, "Returns a Func object by name"},
     {"hi", PyHi, METH_NOARGS, "End function."},
     {"load_i32", (PyCFunction)PyLoad_i32, METH_VARARGS, "Load i32 from base [ + offset]"},
+    {"store_i32",  (PyCFunction)PyStore_i32,  METH_VARARGS, "Store i32 value to memory address"},
     {"if_",       (PyCFunction)PyIf,       METH_O,      "Start an if block"},
     {"endif_",    (PyCFunction)PyEndIf,    METH_NOARGS, "End an if block"},
     {"while_",    (PyCFunction)PyWhile,    METH_O,      "Start a while block"},

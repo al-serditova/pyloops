@@ -28,20 +28,16 @@ ptr = pyloops.IReg()
 amount = pyloops.IReg()
 
 pyloops.start_func("a_plus_ptr_offset", ptr, amount)
-i = pyloops.IReg(0)
-sum = pyloops.IReg(0)
-offset = pyloops.IReg(0)
-# pyloops.while_(i<amount)
-# sum += pyloops.load_i32(ptr, offset)
-# i += 1
-# offset += pyloops.IReg(4)
-# pyloops.endwhile_()
+val = pyloops.IReg(42)
+offset = pyloops.IReg(8) 
+# pyloops.store_i32(ptr, val)
+# pyloops.store_i32(ptr, 42)
+# pyloops.store_i32(ptr, offset, val)
+# pyloops.store_i32(ptr, offset, 42)
+# pyloops.store_i32(ptr, 8, val)
+# pyloops.store_i32(ptr, 8, 42)
 
-sum += 10
-sum -= 2
-sum *= 6
-sum %= 5
-pyloops.return_(sum)
+pyloops.return_(amount)
 pyloops.end_func()
 
 func = pyloops.get_func("a_plus_ptr_offset")
@@ -61,4 +57,4 @@ data = np.array([8, 2, -5, 7, 6], dtype = np.int32)
 data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
 res = executable_func(data_ptr, 2)
-print(res)
+print(data)
