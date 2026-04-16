@@ -24,14 +24,24 @@ import numpy as np
 # print(res)
 
 
-a = pyloops.IReg()
 ptr = pyloops.IReg()
-offset = pyloops.IReg()
+amount = pyloops.IReg()
 
-pyloops.start_func("a_plus_ptr_offset", a, ptr, offset)
-x = pyloops.IReg(pyloops.load_i32(ptr, offset))
-a += x
-pyloops.return_(a)
+pyloops.start_func("a_plus_ptr_offset", ptr, amount)
+i = pyloops.IReg(0)
+sum = pyloops.IReg(0)
+offset = pyloops.IReg(0)
+# pyloops.while_(i<amount)
+# sum += pyloops.load_i32(ptr, offset)
+# i += 1
+# offset += pyloops.IReg(4)
+# pyloops.endwhile_()
+
+sum += 10
+sum -= 2
+sum *= 6
+sum %= 5
+pyloops.return_(sum)
 pyloops.end_func()
 
 func = pyloops.get_func("a_plus_ptr_offset")
@@ -40,7 +50,6 @@ func.print_assembly()
 
 addr = func.ptr()
 executable_func = ctypes.CFUNCTYPE(
-    ctypes.c_int64, 
     ctypes.c_int64, 
     ctypes.POINTER(ctypes.c_int32),
     ctypes.c_int64
@@ -51,5 +60,5 @@ data = np.array([8, 2, -5, 7, 6], dtype = np.int32)
 # Получаем указатель на данные массива
 data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
-res = executable_func(5, data_ptr, 16)
+res = executable_func(data_ptr, 2)
 print(res)

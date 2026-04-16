@@ -15,7 +15,7 @@ using namespace loops;
 extern "C"
 {
 
-static PyObject* py_getFunc(PyObject* self, PyObject* args) {
+static PyObject* PyGetFunc(PyObject* self, PyObject* args) {
     const char* name;
     if (!PyArg_ParseTuple(args, "s", &name)) return NULL;
     // 1. Получаем реальный Func из контекста loops
@@ -30,7 +30,7 @@ static PyObject* py_getFunc(PyObject* self, PyObject* args) {
     return (PyObject*)py_f;
 }
 
-static PyObject* py_load_i32(PyObject* self, PyObject* args) {
+static PyObject* PyLoad_i32(PyObject* self, PyObject* args) {
     PyObject *obj_ptr = nullptr;
     PyObject *obj_offset = nullptr;
 
@@ -77,6 +77,48 @@ static PyObject* py_load_i32(PyObject* self, PyObject* args) {
     py_res->expr = new IExpr(load_<int32_t>(address_expr));
 
     return (PyObject*)py_res;
+}
+
+static PyObject* PyIf(PyObject* self, PyObject* obj_a) {
+    if (!PyObject_TypeCheck(obj_a, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Expected an IReg object");
+        return NULL;
+    }
+    PyIReg* py_cond = (PyIReg*)obj_a;
+
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
+    CodeCollecting* coll = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
+    IExpr condition = py_cond->getExpr();
+    Expr condition_(condition.notype());
+    coll->if_(condition_);
+
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyEndIf(PyObject* self, PyObject* args) {
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endif_();
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyWhile(PyObject* self, PyObject* obj_a) {
+    if (!PyObject_TypeCheck(obj_a, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Expected an IReg object");
+        return NULL;
+    }
+    PyIReg* py_cond = (PyIReg*)obj_a;
+
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
+    CodeCollecting* coll = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
+    IExpr condition = py_cond->getExpr();
+    Expr condition_(condition.notype());
+    coll->while_(condition_);
+
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyEndWhile(PyObject* self, PyObject* args) {
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endwhile_();
+    Py_RETURN_NONE;
 }
 
 static PyObject* PyStartFunc(PyObject* self, PyObject* args) {
@@ -136,8 +178,7 @@ static PyObject* PyReturn(PyObject* self, PyObject* obj_a) {
     Py_RETURN_NONE;
 }
 
-static PyObject *PyEndFunc(PyObject *self, PyObject *args)
-{
+static PyObject *PyEndFunc(PyObject *self, PyObject *args) {
     getImpl(&ctx)->endFunc();
     Py_RETURN_NONE;
 }
@@ -205,7 +246,7 @@ static PyObject *PyHi(PyObject *self, PyObject *args)
             getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
             CodeCollecting* coll1 = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
             IExpr condition1 = (x < minval);
-            Expr condition1_(condition1.notype());        
+            Expr condition1_(condition1.notype());
             coll1->if_(condition1_);
             {
                 minval = x;
@@ -243,9 +284,13 @@ static PyMethodDef PyloopsMethods[] = {
     {"start_func", PyStartFunc, METH_VARARGS, "Create new loops function."},
     {"return_", PyReturn, METH_O, "Loops function's return."},
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
-    {"get_func", py_getFunc, METH_VARARGS, "Returns a Func object by name"},
+    {"get_func", PyGetFunc, METH_VARARGS, "Returns a Func object by name"},
     {"hi", PyHi, METH_NOARGS, "End function."},
-    {"load_i32", (PyCFunction)py_load_i32, METH_VARARGS, "Load i32 from base [ + offset]"},
+    {"load_i32", (PyCFunction)PyLoad_i32, METH_VARARGS, "Load i32 from base [ + offset]"},
+    {"if_",       (PyCFunction)PyIf,       METH_O,      "Start an if block"},
+    {"endif_",    (PyCFunction)PyEndIf,    METH_NOARGS, "End an if block"},
+    {"while_",    (PyCFunction)PyWhile,    METH_O,      "Start a while block"},
+    {"endwhile_", (PyCFunction)PyEndWhile, METH_NOARGS, "End a while block"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
