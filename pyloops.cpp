@@ -30,30 +30,51 @@ static PyObject* py_getFunc(PyObject* self, PyObject* args) {
     return (PyObject*)py_f;
 }
 
-static PyObject* py_load_i32(PyObject* self, PyObject* arg) {
-    // 1. Проверяем, что пришел именно наш объект IReg
-    if (!PyObject_TypeCheck(arg, &PyIRegType)) {
-        PyErr_SetString(PyExc_TypeError, "Argument must be an IReg (acting as a pointer)");
+static PyObject* py_load_i32(PyObject* self, PyObject* args) {
+    PyObject *obj_ptr = nullptr;
+    PyObject *obj_offset = nullptr;
+
+    // Парсим: первый обязательный (IReg), второй опциональный (int или IReg)
+    if (!PyArg_ParseTuple(args, "O|O", &obj_ptr, &obj_offset)) {
         return NULL;
     }
 
-    PyIReg* py_ptr = (PyIReg*)arg;
-
-    // Проверка на инициализацию внутреннего регистра
-    if (!py_ptr->reg) {
-        PyErr_SetString(PyExc_RuntimeError, "Pointer register is not initialized");
+    // Проверка базового указателя (обязательно IReg)
+    if (!PyObject_TypeCheck(obj_ptr, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "First argument must be an IReg (base pointer)");
         return NULL;
     }
+    PyIReg* py_ptr = (PyIReg*)obj_ptr;
 
-    // 2. Генерируем инструкцию загрузки.
+    // Подготавливаем выражение для адреса
+    // Начинаем с базового адреса
+    IExpr address_expr = py_ptr->getExpr();
 
-    // 3. Создаем новый объект PyIReg для Python
+    // Если передан второй аргумент (смещение)
+    if (obj_offset != nullptr && obj_offset != Py_None) {
+        if (PyObject_TypeCheck(obj_offset, &PyIRegType)) {
+            // Смещение — это другой регистр
+            address_expr = address_expr + ((PyIReg*)obj_offset)->getExpr();
+        } 
+        else if (PyLong_Check(obj_offset)) {
+            // Смещение — это константа
+            int64_t offset_val = PyLong_AsLongLong(obj_offset);
+            address_expr = address_expr + offset_val;
+        } 
+        else {
+            PyErr_SetString(PyExc_TypeError, "Offset must be an IReg or an integer");
+            return NULL;
+        }
+    }
+
+    // Создаем новый объект PyIReg для результата
     PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
     if (!py_res) return NULL;
 
-    // Инициализируем указатель новым выделенным в куче регистром
-    py_res->reg = NULL;
-    py_res->expr = new IExpr(load_<int32_t>(py_ptr->getExpr()));
+    // Инициализируем: по твоей новой логике используем expr
+    py_res->reg = nullptr;
+    // Генерируем load от итогового выражения адреса
+    py_res->expr = new IExpr(load_<int32_t>(address_expr));
 
     return (PyObject*)py_res;
 }
@@ -224,7 +245,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
     {"get_func", py_getFunc, METH_VARARGS, "Returns a Func object by name"},
     {"hi", PyHi, METH_NOARGS, "End function."},
-    {"load_i32", (PyCFunction)py_load_i32, METH_O, "Load i32 from address held in IReg"},
+    {"load_i32", (PyCFunction)py_load_i32, METH_VARARGS, "Load i32 from base [ + offset]"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
