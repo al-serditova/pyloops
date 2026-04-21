@@ -33,7 +33,7 @@ minpos //= elemsize
 maxpos //= elemsize
 pyloops.store_i32(minpos_addr, minpos)
 pyloops.store_i32(maxpos_addr, maxpos)
-pyloops.return_(pyloops.IReg(0)) # TODO: return_() and return_(int64_t)
+pyloops.return_(0)
 pyloops.end_func()
 
 func = pyloops.get_func("minmaxloc")
