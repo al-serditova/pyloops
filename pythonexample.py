@@ -26,23 +26,26 @@ import numpy as np
 
 ptr = pyloops.IReg()
 a = pyloops.IReg()
+meow = pyloops.IReg()
 
-pyloops.start_func("aaaa", ptr, a)
+pyloops.start_func("aaaa", ptr, a, meow)
+woof = pyloops.IReg(10)
+meow = 36 + woof - 12 * 2 
 
-pyloops.while_(a > 0)
-pyloops.if_(a == 10)
-pyloops.break_()
+# pyloops.while_(a > 0)
+# pyloops.if_(a == 10)
+# pyloops.break_()
 
-pyloops.elif_(a == 5)
-a += 2
-pyloops.continue_()
+# pyloops.elif_(a == 5)
+# a += 2
+# pyloops.continue_()
 
-pyloops.else_()
-a -= 1
-pyloops.endif_()
-pyloops.endwhile_()
+# pyloops.else_()
+# a -= 1
+# pyloops.endif_()
+# pyloops.endwhile_()
 
-pyloops.return_(a)
+pyloops.return_(meow)
 pyloops.end_func()
 
 func = pyloops.get_func("aaaa")

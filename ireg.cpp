@@ -95,8 +95,18 @@ void PyIReg_dealloc(PyIReg *self)
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
+static loops::IExpr PyObj_to_IExpr(PyObject* obj) {
+    if (PyObject_TypeCheck(obj, &PyIRegType)) {
+        return ((PyIReg*)obj)->getExpr();
+    } else if (PyLong_Check(obj)) {
+        USE_CONTEXT_(ctx);
+        return loops::IExpr(CONST_((int64_t)PyLong_AsLongLong(obj)));
+    }
+    throw std::runtime_error("Unsupported operand type");
+}
+
 static PyObject* PyIReg_inplace(PyObject* self, PyObject* other, int type) {
-        PyIReg* a = (PyIReg*)self;
+    PyIReg* a = (PyIReg*)self;
 
     // 1. Проверка инициализации целевого регистра
     if (!a->initialized()) {
@@ -171,11 +181,83 @@ static PyObject* PyIReg_imod(PyObject* self, PyObject* other) {
     return PyIReg_inplace(self, other, OP_MOD);
 }
 
+static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
+    USE_CONTEXT_(ctx);
+    loops::IExpr result_expr;
+
+    // Сценарий 1: IReg + IReg
+    if (PyObject_TypeCheck(v, &PyIRegType) && PyObject_TypeCheck(w, &PyIRegType)) {
+        loops::IExpr left = ((PyIReg*)v)->getExpr();
+        loops::IExpr right = ((PyIReg*)w)->getExpr();
+        switch (type) {
+            case OP_ADD: result_expr = left + right; break;
+            case OP_SUB: result_expr = left - right; break;
+            case OP_MUL: result_expr = left * right; break;
+            case OP_DIV: result_expr = left / right; break;
+            case OP_MOD: result_expr = left % right; break;
+            default: Py_RETURN_NOTIMPLEMENTED;
+        }
+    }
+    // Сценарий 2: IReg + int
+    else if (PyObject_TypeCheck(v, &PyIRegType) && PyLong_Check(w)) {
+        loops::IExpr left = ((PyIReg*)v)->getExpr();
+        int64_t right = (int64_t)PyLong_AsLongLong(w);
+        switch (type) {
+            case OP_ADD: result_expr = left + right; break;
+            case OP_SUB: result_expr = left - right; break;
+            case OP_MUL: result_expr = left * right; break;
+            case OP_DIV: result_expr = left / right; break;
+            case OP_MOD: result_expr = left % right; break;
+            default: Py_RETURN_NOTIMPLEMENTED;
+        }
+    }
+    // Сценарий 3: int + IReg
+    else if (PyLong_Check(v) && PyObject_TypeCheck(w, &PyIRegType)) {
+        int64_t left = (int64_t)PyLong_AsLongLong(v);
+        loops::IExpr right = ((PyIReg*)w)->getExpr();
+        switch (type) {
+            // ВАЖНО: здесь используем CONST_(left), чтобы создать IExpr из числа
+            case OP_ADD: result_expr = loops::IExpr(CONST_(left)) + right; break;
+            case OP_SUB: result_expr = loops::IExpr(CONST_(left)) - right; break;
+            case OP_MUL: result_expr = loops::IExpr(CONST_(left)) * right; break;
+            case OP_DIV: result_expr = loops::IExpr(CONST_(left)) / right; break;
+            case OP_MOD: result_expr = loops::IExpr(CONST_(left)) % right; break;
+            default: Py_RETURN_NOTIMPLEMENTED;
+        }
+    }
+    else {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // Оборачиваем итог в новый объект PyIReg
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(result_expr);
+    return (PyObject*)py_res;
+}
+
+static PyObject* PyIReg_add(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_ADD);
+}
+static PyObject* PyIReg_sub(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_SUB);
+}
+static PyObject* PyIReg_mul(PyObject* v, PyObject* w) { 
+    return PyIReg_binary(v, w, OP_MUL);
+}
+static PyObject* PyIReg_div(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_DIV);
+}
+static PyObject* PyIReg_mod(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_MOD);
+}
+
 static PyNumberMethods PyIReg_as_number = {
-    .nb_add = 0,    
-    .nb_subtract = 0,
-    .nb_multiply = 0,
-    .nb_remainder = 0,
+    .nb_add = (binaryfunc)PyIReg_add,    
+    .nb_subtract = (binaryfunc)PyIReg_sub,
+    .nb_multiply = (binaryfunc)PyIReg_mul,
+    .nb_remainder = (binaryfunc)PyIReg_mod,
     .nb_divmod = 0,  
     .nb_power = 0,  
     .nb_negative = 0,
@@ -188,15 +270,16 @@ static PyNumberMethods PyIReg_as_number = {
     .nb_and = 0,    
     .nb_xor = 0,    
     .nb_or = 0,     
-    .nb_int = 0,    
-    // .reserved = 0,  
+    .nb_int = 0,     
     .nb_float = 0,                       
     .nb_inplace_add = (binaryfunc)PyIReg_iadd, 
     .nb_inplace_subtract = (binaryfunc)PyIReg_isub,
     .nb_inplace_multiply = (binaryfunc)PyIReg_imul,
     .nb_inplace_remainder = (binaryfunc)PyIReg_imod,
+    .nb_floor_divide = (binaryfunc)PyIReg_div,
     .nb_inplace_floor_divide = (binaryfunc)PyIReg_idiv,
 };
+
 
 // Функция-сеттер для атрибута "assign"
 int PyIReg_set_assign(PyIReg* self, PyObject* value, void* closure) {
@@ -295,6 +378,15 @@ static PyObject* PyIReg_RichCompare(PyObject* v, PyObject* w, int op)
     return (PyObject*)res_obj;
 }
 
+static PyMethodDef PyIReg_methods[] = {
+    {"__radd__", (PyCFunction)PyIReg_add, METH_O, "Right addition"},
+    {"__rsub__", (PyCFunction)PyIReg_sub, METH_O, "Right subtraction"},
+    {"__rmul__", (PyCFunction)PyIReg_mul, METH_O, "Right multiplication"},
+    {"__rfloordiv__", (PyCFunction)PyIReg_div, METH_O, "Right floor division"},
+    {"__rmod__", (PyCFunction)PyIReg_mod, METH_O, "Right remainder"},
+    {NULL, NULL, 0, NULL}
+};
+
 PyTypeObject PyIRegType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "pyloops.IReg",
@@ -305,6 +397,7 @@ PyTypeObject PyIRegType = {
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_doc = "Loops Register",
     .tp_richcompare = (richcmpfunc)PyIReg_RichCompare,
+    .tp_methods = PyIReg_methods,
     .tp_getset = PyIReg_getset,
     .tp_init = (initproc)PyIReg_init,
     .tp_new = PyIReg_new,
