@@ -37,7 +37,7 @@ offset = pyloops.IReg(8)
 # pyloops.store_i32(ptr, 8, val)
 # pyloops.store_i32(ptr, 8, 42)
 
-pyloops.return_(amount)
+pyloops.return_(265)
 pyloops.end_func()
 
 func = pyloops.get_func("a_plus_ptr_offset")

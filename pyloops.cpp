@@ -246,16 +246,46 @@ static PyObject* PyStartFunc(PyObject* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
-static PyObject* PyReturn(PyObject* self, PyObject* obj_a) {
-    if (!PyObject_TypeCheck(obj_a, &PyIRegType)) {
-        PyErr_SetString(PyExc_TypeError, "Expected an IReg object");
+static PyObject* PyReturn(PyObject* self, PyObject* args) {
+    PyObject* obj = nullptr;
+
+    // 1. Парсим аргументы. "|O" - аргумент опционален.
+    if (!PyArg_ParseTuple(args, "|O", &obj)) {
         return NULL;
     }
 
-    // Приведение типов к нашей структуре
-    PyIReg* reg_a = (PyIReg*)obj_a;
     USE_CONTEXT_(ctx);
-    RETURN_(*(reg_a->reg));
+
+    try {
+        // Сценарий 1: Вызов без аргументов — return_()
+        if (obj == nullptr || obj == Py_None) {
+            RETURN_();
+        }
+        // Сценарий 2: Передан регистр IReg
+        else if (PyObject_TypeCheck(obj, &PyIRegType)) {
+            PyIReg* py_reg = (PyIReg*)obj;
+            if (!py_reg->initialized()) {
+                PyErr_SetString(PyExc_RuntimeError, "Return register is uninitialized");
+                return NULL;
+            }
+            RETURN_(py_reg->getExpr());
+        }
+        // Сценарий 3: Передано обычное число
+        else if (PyLong_Check(obj)) {
+            int64_t val = (int64_t)PyLong_AsLongLong(obj);
+            if (val == -1 && PyErr_Occurred()) return NULL;
+            
+            // Вопрос: оборачиваем в CONST_ ??
+            RETURN_(loops::IExpr(CONST_(val)));
+        }
+        else {
+            PyErr_SetString(PyExc_TypeError, "Argument must be IReg, int or None");
+            return NULL;
+        }
+    } catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
 
     Py_RETURN_NONE;
 }
@@ -326,7 +356,7 @@ static PyObject *PyHi(PyObject *self, PyObject *args)
 // Таблица методов
 static PyMethodDef PyloopsMethods[] = {
     {"start_func", PyStartFunc, METH_VARARGS, "Create new loops function."},
-    {"return_", PyReturn, METH_O, "Loops function's return."},
+    {"return_", (PyCFunction)PyReturn, METH_VARARGS, "Return from function"},
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
     {"get_func", PyGetFunc, METH_VARARGS, "Returns a Func object by name"},
     {"hi", PyHi, METH_NOARGS, "End function."},
