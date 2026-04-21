@@ -126,8 +126,12 @@ static PyObject* PyIReg_inplace(PyObject* self, PyObject* other, int type) {
             case OP_MUL: *(a->reg) *= b->getExpr(); break;
             case OP_DIV: *(a->reg) /= b->getExpr(); break;
             case OP_MOD: *(a->reg) %= b->getExpr(); break;
-            default:
-                break;
+            case OP_AND: *(a->reg) &= b->getExpr(); break;
+            case OP_OR:  *(a->reg) |= b->getExpr(); break;
+            case OP_XOR: *(a->reg) ^= b->getExpr(); break;
+            case OP_SHL: *(a->reg) <<= b->getExpr(); break;
+            case OP_SHR: *(a->reg) >>= b->getExpr(); break;
+            default: break;
             }
         } else {
             PyErr_SetString(PyExc_RuntimeError, "Source register is uninitialized");
@@ -148,8 +152,12 @@ static PyObject* PyIReg_inplace(PyObject* self, PyObject* other, int type) {
         case OP_MUL: *(a->reg) *= val; break;
         case OP_DIV: *(a->reg) /= val; break;
         case OP_MOD: *(a->reg) %= val; break;
-        default:
-            break;
+        case OP_AND: *(a->reg) &= val; break;
+        case OP_OR:  *(a->reg) |= val; break;
+        case OP_XOR: *(a->reg) ^= val; break;
+        case OP_SHL: *(a->reg) <<= val; break;
+        case OP_SHR: *(a->reg) >>= val; break;
+        default: break;
         }
     }
     else {
@@ -179,6 +187,26 @@ static PyObject* PyIReg_idiv(PyObject* self, PyObject* other) {
 
 static PyObject* PyIReg_imod(PyObject* self, PyObject* other) {
     return PyIReg_inplace(self, other, OP_MOD);
+}
+
+static PyObject* PyIReg_iand(PyObject* self, PyObject* other) {
+    return PyIReg_inplace(self, other, OP_AND);
+
+}
+static PyObject* PyIReg_ior(PyObject* self, PyObject* other)  {
+    return PyIReg_inplace(self, other, OP_OR);
+}
+
+static PyObject* PyIReg_ixor(PyObject* self, PyObject* other) {
+    return PyIReg_inplace(self, other, OP_XOR);
+}
+
+static PyObject* PyIReg_ilshift(PyObject* self, PyObject* other) {
+    return PyIReg_inplace(self, other, OP_SHL);
+}
+
+static PyObject* PyIReg_irshift(PyObject* self, PyObject* other) {
+    return PyIReg_inplace(self, other, OP_SHR);
 }
 
 static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
@@ -255,30 +283,39 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
 static PyObject* PyIReg_add(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_ADD);
 }
+
 static PyObject* PyIReg_sub(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_SUB);
 }
+
 static PyObject* PyIReg_mul(PyObject* v, PyObject* w) { 
     return PyIReg_binary(v, w, OP_MUL);
 }
+
 static PyObject* PyIReg_div(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_DIV);
 }
+
 static PyObject* PyIReg_mod(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_MOD);
 }
+
 static PyObject* PyIReg_and(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_AND);
 }
+
 static PyObject* PyIReg_or(PyObject* v, PyObject* w)  {
     return PyIReg_binary(v, w, OP_OR);
 }
+
 static PyObject* PyIReg_xor(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_XOR);
 }
+
 static PyObject* PyIReg_lshift(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_SHL);
 }
+
 static PyObject* PyIReg_rshift(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_SHR);
 }
@@ -307,6 +344,11 @@ static PyNumberMethods PyIReg_as_number = {
     .nb_inplace_subtract = (binaryfunc)PyIReg_isub,
     .nb_inplace_multiply = (binaryfunc)PyIReg_imul,
     .nb_inplace_remainder = (binaryfunc)PyIReg_imod,
+    .nb_inplace_lshift = (binaryfunc)PyIReg_ilshift,
+    .nb_inplace_rshift = (binaryfunc)PyIReg_irshift,
+    .nb_inplace_and = (binaryfunc)PyIReg_iand,
+    .nb_inplace_xor = (binaryfunc)PyIReg_ixor,
+    .nb_inplace_or = (binaryfunc)PyIReg_ior,
     .nb_floor_divide = (binaryfunc)PyIReg_div,
     .nb_inplace_floor_divide = (binaryfunc)PyIReg_idiv,
 };

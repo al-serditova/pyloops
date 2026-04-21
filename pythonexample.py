@@ -45,13 +45,18 @@ meow = 36 + woof - 12 * 2
 # pyloops.endif_()
 # pyloops.endwhile_()
 
-val = pyloops.IReg(0b1010)
-step1 = (val << 2) | 1
-step2 = 0x3F & step1
-step3 = step2 ^ 41
-res = (step3 + 16) >> 2
+val = pyloops.IReg(10)
+# step1 = (val << 2) | 1
+# step2 = 0x3F & step1
+# step3 = step2 ^ 41
+# res = (step3 + 16) >> 2
 
-pyloops.return_(res)
+val <<= 2 
+val |= 1  
+val &= 0x0F
+val ^= 0x09
+
+pyloops.return_(val)
 pyloops.end_func()
 
 func = pyloops.get_func("aaaa")
