@@ -95,16 +95,6 @@ void PyIReg_dealloc(PyIReg *self)
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-static loops::IExpr PyObj_to_IExpr(PyObject* obj) {
-    if (PyObject_TypeCheck(obj, &PyIRegType)) {
-        return ((PyIReg*)obj)->getExpr();
-    } else if (PyLong_Check(obj)) {
-        USE_CONTEXT_(ctx);
-        return loops::IExpr(CONST_((int64_t)PyLong_AsLongLong(obj)));
-    }
-    throw std::runtime_error("Unsupported operand type");
-}
-
 static PyObject* PyIReg_inplace(PyObject* self, PyObject* other, int type) {
     PyIReg* a = (PyIReg*)self;
 
@@ -144,7 +134,6 @@ static PyObject* PyIReg_inplace(PyObject* self, PyObject* other, int type) {
         if (val == -1 && PyErr_Occurred()) {
             return NULL;
         }
-        // Используем перегрузку loops для int64_t (или CONST_(val))
         switch (type)
         {
         case OP_ADD: *(a->reg) += val; break;
@@ -254,17 +243,16 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
         int64_t left = (int64_t)PyLong_AsLongLong(v);
         loops::IExpr right = ((PyIReg*)w)->getExpr();
         switch (type) {
-            // ВАЖНО: здесь используем CONST_(left), чтобы создать IExpr из числа
-            case OP_ADD: result_expr = loops::IExpr(CONST_(left)) + right; break;
-            case OP_SUB: result_expr = loops::IExpr(CONST_(left)) - right; break;
-            case OP_MUL: result_expr = loops::IExpr(CONST_(left)) * right; break;
-            case OP_DIV: result_expr = loops::IExpr(CONST_(left)) / right; break;
-            case OP_MOD: result_expr = loops::IExpr(CONST_(left)) % right; break;
-            case OP_AND: result_expr = loops::IExpr(CONST_(left)) & right; break;
-            case OP_OR:  result_expr = loops::IExpr(CONST_(left)) | right; break;
-            case OP_XOR: result_expr = loops::IExpr(CONST_(left)) ^ right; break;
-            case OP_SHL: result_expr = loops::IExpr(CONST_(left)) << right; break;
-            case OP_SHR: result_expr = loops::IExpr(CONST_(left)) >> right; break;
+            case OP_ADD: result_expr = left + right; break;
+            case OP_SUB: result_expr = left - right; break;
+            case OP_MUL: result_expr = left * right; break;
+            case OP_DIV: result_expr = left / right; break;
+            case OP_MOD: result_expr = left % right; break;
+            case OP_AND: result_expr = left & right; break;
+            case OP_OR:  result_expr = left | right; break;
+            case OP_XOR: result_expr = left ^ right; break;
+            case OP_SHL: result_expr = left << right; break;
+            case OP_SHR: result_expr = left >> right; break;
             default: Py_RETURN_NOTIMPLEMENTED;
         }
     }
@@ -451,20 +439,6 @@ static PyObject* PyIReg_RichCompare(PyObject* v, PyObject* w, int op)
     return (PyObject*)res_obj;
 }
 
-static PyMethodDef PyIReg_methods[] = {
-    {"__radd__", (PyCFunction)PyIReg_add, METH_O, "Right addition"},
-    {"__rsub__", (PyCFunction)PyIReg_sub, METH_O, "Right subtraction"},
-    {"__rmul__", (PyCFunction)PyIReg_mul, METH_O, "Right multiplication"},
-    {"__rfloordiv__", (PyCFunction)PyIReg_div, METH_O, "Right floor division"},
-    {"__rmod__", (PyCFunction)PyIReg_mod, METH_O, "Right remainder"},
-    {"__rlshift__", (PyCFunction)PyIReg_lshift, METH_O, ""},
-    {"__rrshift__", (PyCFunction)PyIReg_rshift, METH_O, ""},
-    {"__rand__", (PyCFunction)PyIReg_and, METH_O, ""},
-    {"__ror__",  (PyCFunction)PyIReg_or,  METH_O, ""},
-    {"__rxor__", (PyCFunction)PyIReg_xor, METH_O, ""},
-    {NULL, NULL, 0, NULL}
-};
-
 PyTypeObject PyIRegType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "pyloops.IReg",
@@ -475,7 +449,6 @@ PyTypeObject PyIRegType = {
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_doc = "Loops Register",
     .tp_richcompare = (richcmpfunc)PyIReg_RichCompare,
-    .tp_methods = PyIReg_methods,
     .tp_getset = PyIReg_getset,
     .tp_init = (initproc)PyIReg_init,
     .tp_new = PyIReg_new,
