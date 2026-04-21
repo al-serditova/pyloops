@@ -195,6 +195,11 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
             case OP_MUL: result_expr = left * right; break;
             case OP_DIV: result_expr = left / right; break;
             case OP_MOD: result_expr = left % right; break;
+            case OP_AND: result_expr = left & right; break;
+            case OP_OR:  result_expr = left | right; break;
+            case OP_XOR: result_expr = left ^ right; break;
+            case OP_SHL: result_expr = left << right; break;
+            case OP_SHR: result_expr = left >> right; break;
             default: Py_RETURN_NOTIMPLEMENTED;
         }
     }
@@ -208,6 +213,11 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
             case OP_MUL: result_expr = left * right; break;
             case OP_DIV: result_expr = left / right; break;
             case OP_MOD: result_expr = left % right; break;
+            case OP_AND: result_expr = left & right; break;
+            case OP_OR:  result_expr = left | right; break;
+            case OP_XOR: result_expr = left ^ right; break;
+            case OP_SHL: result_expr = left << right; break;
+            case OP_SHR: result_expr = left >> right; break;
             default: Py_RETURN_NOTIMPLEMENTED;
         }
     }
@@ -222,6 +232,11 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
             case OP_MUL: result_expr = loops::IExpr(CONST_(left)) * right; break;
             case OP_DIV: result_expr = loops::IExpr(CONST_(left)) / right; break;
             case OP_MOD: result_expr = loops::IExpr(CONST_(left)) % right; break;
+            case OP_AND: result_expr = loops::IExpr(CONST_(left)) & right; break;
+            case OP_OR:  result_expr = loops::IExpr(CONST_(left)) | right; break;
+            case OP_XOR: result_expr = loops::IExpr(CONST_(left)) ^ right; break;
+            case OP_SHL: result_expr = loops::IExpr(CONST_(left)) << right; break;
+            case OP_SHR: result_expr = loops::IExpr(CONST_(left)) >> right; break;
             default: Py_RETURN_NOTIMPLEMENTED;
         }
     }
@@ -252,6 +267,22 @@ static PyObject* PyIReg_div(PyObject* v, PyObject* w) {
 static PyObject* PyIReg_mod(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_MOD);
 }
+static PyObject* PyIReg_and(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_AND);
+}
+static PyObject* PyIReg_or(PyObject* v, PyObject* w)  {
+    return PyIReg_binary(v, w, OP_OR);
+}
+static PyObject* PyIReg_xor(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_XOR);
+}
+static PyObject* PyIReg_lshift(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_SHL);
+}
+static PyObject* PyIReg_rshift(PyObject* v, PyObject* w) {
+    return PyIReg_binary(v, w, OP_SHR);
+}
+
 
 static PyNumberMethods PyIReg_as_number = {
     .nb_add = (binaryfunc)PyIReg_add,    
@@ -265,11 +296,11 @@ static PyNumberMethods PyIReg_as_number = {
     .nb_absolute = 0,
     .nb_bool = 0,   
     .nb_invert = 0,  
-    .nb_lshift = 0,  
-    .nb_rshift = 0,  
-    .nb_and = 0,    
-    .nb_xor = 0,    
-    .nb_or = 0,     
+    .nb_lshift = (binaryfunc)PyIReg_lshift,
+    .nb_rshift = (binaryfunc)PyIReg_rshift,
+    .nb_and = (binaryfunc)PyIReg_and,
+    .nb_xor = (binaryfunc)PyIReg_xor,
+    .nb_or = (binaryfunc)PyIReg_or,    
     .nb_int = 0,     
     .nb_float = 0,                       
     .nb_inplace_add = (binaryfunc)PyIReg_iadd, 
@@ -384,6 +415,11 @@ static PyMethodDef PyIReg_methods[] = {
     {"__rmul__", (PyCFunction)PyIReg_mul, METH_O, "Right multiplication"},
     {"__rfloordiv__", (PyCFunction)PyIReg_div, METH_O, "Right floor division"},
     {"__rmod__", (PyCFunction)PyIReg_mod, METH_O, "Right remainder"},
+    {"__rlshift__", (PyCFunction)PyIReg_lshift, METH_O, ""},
+    {"__rrshift__", (PyCFunction)PyIReg_rshift, METH_O, ""},
+    {"__rand__", (PyCFunction)PyIReg_and, METH_O, ""},
+    {"__ror__",  (PyCFunction)PyIReg_or,  METH_O, ""},
+    {"__rxor__", (PyCFunction)PyIReg_xor, METH_O, ""},
     {NULL, NULL, 0, NULL}
 };
 

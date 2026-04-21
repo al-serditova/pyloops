@@ -45,7 +45,13 @@ meow = 36 + woof - 12 * 2
 # pyloops.endif_()
 # pyloops.endwhile_()
 
-pyloops.return_(meow)
+val = pyloops.IReg(0b1010)
+step1 = (val << 2) | 1
+step2 = 0x3F & step1
+step3 = step2 ^ 41
+res = (step3 + 16) >> 2
+
+pyloops.return_(res)
 pyloops.end_func()
 
 func = pyloops.get_func("aaaa")
@@ -61,7 +67,7 @@ executable_func = ctypes.CFUNCTYPE(
 
 data = np.array([8, 2, -5, 7, 6], dtype = np.int32)
 
-# # Получаем указатель на данные массива
+# Получаем указатель на данные массива
 data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
 res = executable_func(data_ptr, 14)
