@@ -182,6 +182,28 @@ static PyObject* PyEndIf(PyObject* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
+static PyObject* PyElse(PyObject* self, PyObject* args) {
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->else_();
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyElif(PyObject* self, PyObject* obj_a) {
+    if (!PyObject_TypeCheck(obj_a, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Expected an IReg object for elif");
+        return NULL;
+    }
+    PyIReg* py_cond = (PyIReg*)obj_a;
+    
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
+    CodeCollecting* coll = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
+    IExpr condition = py_cond->getExpr();
+    Expr condition_(condition.notype());
+    
+    coll->elif_(condition_);
+
+    Py_RETURN_NONE;
+}
+
 static PyObject* PyWhile(PyObject* self, PyObject* obj_a) {
     if (!PyObject_TypeCheck(obj_a, &PyIRegType)) {
         PyErr_SetString(PyExc_TypeError, "Expected an IReg object");
@@ -200,6 +222,26 @@ static PyObject* PyWhile(PyObject* self, PyObject* obj_a) {
 
 static PyObject* PyEndWhile(PyObject* self, PyObject* args) {
     getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endwhile_();
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyBreak(PyObject* self, PyObject* args) {
+    int depth = 1; // По умолчанию выходим из текущего цикла
+    if (!PyArg_ParseTuple(args, "|i", &depth)) {
+        return NULL;
+    }
+
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->break_(depth);
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyContinue(PyObject* self, PyObject* args) {
+    int depth = 1; // По умолчанию прыгаем в начало текущего цикла
+    if (!PyArg_ParseTuple(args, "|i", &depth)) {
+        return NULL;
+    }
+
+    getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->continue_(depth);
     Py_RETURN_NONE;
 }
 
@@ -364,8 +406,12 @@ static PyMethodDef PyloopsMethods[] = {
     {"store_i32",  (PyCFunction)PyStore_i32,  METH_VARARGS, "Store i32 value to memory address"},
     {"if_",       (PyCFunction)PyIf,       METH_O,      "Start an if block"},
     {"endif_",    (PyCFunction)PyEndIf,    METH_NOARGS, "End an if block"},
+    {"else_",     (PyCFunction)PyElse,     METH_NOARGS,  "Else block"},
+    {"elif_",     (PyCFunction)PyElif,     METH_O,       "Else-if block"},
     {"while_",    (PyCFunction)PyWhile,    METH_O,      "Start a while block"},
     {"endwhile_", (PyCFunction)PyEndWhile, METH_NOARGS, "End a while block"},
+    {"break_",    (PyCFunction)PyBreak,    METH_VARARGS,  "Break loop"},
+    {"continue_", (PyCFunction)PyContinue, METH_VARARGS,  "Continue loop"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля

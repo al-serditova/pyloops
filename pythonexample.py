@@ -25,22 +25,27 @@ import numpy as np
 
 
 ptr = pyloops.IReg()
-amount = pyloops.IReg()
+a = pyloops.IReg()
 
-pyloops.start_func("a_plus_ptr_offset", ptr, amount)
-val = pyloops.IReg(42)
-offset = pyloops.IReg(8) 
-# pyloops.store_i32(ptr, val)
-# pyloops.store_i32(ptr, 42)
-# pyloops.store_i32(ptr, offset, val)
-# pyloops.store_i32(ptr, offset, 42)
-# pyloops.store_i32(ptr, 8, val)
-# pyloops.store_i32(ptr, 8, 42)
+pyloops.start_func("aaaa", ptr, a)
 
-pyloops.return_(265)
+pyloops.while_(a > 0)
+pyloops.if_(a == 10)
+pyloops.break_()
+
+pyloops.elif_(a == 5)
+a += 2
+pyloops.continue_()
+
+pyloops.else_()
+a -= 1
+pyloops.endif_()
+pyloops.endwhile_()
+
+pyloops.return_(a)
 pyloops.end_func()
 
-func = pyloops.get_func("a_plus_ptr_offset")
+func = pyloops.get_func("aaaa")
 func.print_ir()
 func.print_assembly()
 
@@ -53,8 +58,8 @@ executable_func = ctypes.CFUNCTYPE(
 
 data = np.array([8, 2, -5, 7, 6], dtype = np.int32)
 
-# Получаем указатель на данные массива
+# # Получаем указатель на данные массива
 data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
-res = executable_func(data_ptr, 2)
-print(data)
+res = executable_func(data_ptr, 14)
+print(res)
