@@ -337,6 +337,26 @@ static PyObject *PyEndFunc(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
+static PyObject* PySign(PyObject* self, PyObject* arg) {
+    // Проверяем, что нам передали именно IReg
+    if (!PyObject_TypeCheck(arg, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "sign() expects a pyloops.IReg argument");
+        return NULL;
+    }
+
+    PyIReg* input = (PyIReg*)arg;
+    
+    loops::IExpr result_expr = loops::sign(input->getExpr());
+
+    // Оборачиваем результат в новый PyIReg объект
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+    
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(result_expr);
+    return (PyObject*)py_res;
+}
+
 static PyObject *PyHi(PyObject *self, PyObject *args)
 {
     using namespace loops;
@@ -412,6 +432,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"endwhile_", (PyCFunction)PyEndWhile, METH_NOARGS, "End a while block"},
     {"break_",    (PyCFunction)PyBreak,    METH_VARARGS,  "Break loop"},
     {"continue_", (PyCFunction)PyContinue, METH_VARARGS,  "Continue loop"},
+    {"sign", (PyCFunction)PySign, METH_O, "Returns an IExpr representing the sign of the input register (-1, 0, or 1)."},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля

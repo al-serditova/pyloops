@@ -308,6 +308,43 @@ static PyObject* PyIReg_rshift(PyObject* v, PyObject* w) {
     return PyIReg_binary(v, w, OP_SHR);
 }
 
+static PyObject* PyIReg_unary(PyObject* v, int type) {
+    if (!PyObject_TypeCheck(v, &PyIRegType)) {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    PyIReg* self = (PyIReg*)v;
+    loops::IExpr result_expr;
+
+    switch (type) {
+        case 0: // Унарный минус (-)
+            result_expr = -(self->getExpr());
+            break;
+        case 1: // Абсолютное значение abs()
+            result_expr = loops::abs(self->getExpr());
+            break;
+        case 2: // Инверсия (~)
+            result_expr = ~(self->getExpr());
+            break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // или вот так
+    // if (op_type == 0) res = -(self->getExpr());      // Унарный минус
+    // else if (op_type == 1) res = loops::abs(self->getExpr()); // Abs
+    // else if (op_type == 2) res = ~(self->getExpr()); // Invert
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(result_expr);
+    return (PyObject*)py_res;
+}
+
+static PyObject* PyIReg_negative(PyObject* v) { return PyIReg_unary(v, 0); }
+static PyObject* PyIReg_abs(PyObject* v)      { return PyIReg_unary(v, 1); }
+static PyObject* PyIReg_invert(PyObject* v)   { return PyIReg_unary(v, 2); }
+
 
 static PyNumberMethods PyIReg_as_number = {
     .nb_add = (binaryfunc)PyIReg_add,    
@@ -316,11 +353,11 @@ static PyNumberMethods PyIReg_as_number = {
     .nb_remainder = (binaryfunc)PyIReg_mod,
     .nb_divmod = 0,  
     .nb_power = 0,  
-    .nb_negative = 0,
+    .nb_negative = (unaryfunc)PyIReg_negative,
     .nb_positive = 0,
-    .nb_absolute = 0,
+    .nb_absolute = (unaryfunc)PyIReg_abs,
     .nb_bool = 0,   
-    .nb_invert = 0,  
+    .nb_invert = (unaryfunc)PyIReg_invert,  
     .nb_lshift = (binaryfunc)PyIReg_lshift,
     .nb_rshift = (binaryfunc)PyIReg_rshift,
     .nb_and = (binaryfunc)PyIReg_and,

@@ -28,35 +28,11 @@ ptr = pyloops.IReg()
 a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr, a)
-# woof = pyloops.IReg(10)
-# meow = 36 + woof - 12 * 2 
-
-pyloops.while_(a > 0)
-pyloops.if_(a == 10)
-pyloops.break_()
-
-pyloops.elif_(a == 5)
-a += 2
-pyloops.continue_()
-
-pyloops.else_()
-a -= 1
-pyloops.endif_()
-pyloops.endwhile_()
-pyloops.return_(0)
-
-# val = pyloops.IReg(10)
-# # step1 = (val << 2) | 1
-# # step2 = 0x3F & step1
-# # step3 = step2 ^ 41
-# # res = (step3 + 16) >> 2
-
-# val <<= 2 
-# val |= 1  
-# val &= 0x0F
-# val ^= 0x09
-
-# pyloops.return_(val)
+v_abs = abs(a)
+v_neg = -v_abs
+v_sign = pyloops.sign(a)
+meow = v_sign
+pyloops.return_(meow)
 pyloops.end_func()
 
 func = pyloops.get_func("aaaa")
