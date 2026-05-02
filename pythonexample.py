@@ -28,12 +28,17 @@ ptr = pyloops.IReg()
 a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr, a)
-meow = pyloops.store_(np.int32, ptr, pyloops.IReg(5), 1024)
+meow = pyloops.store_(np.int32, ptr, pyloops.IReg(4), 8)
 val = pyloops.load_(np.int32, ptr, 4)
-# v_abs = abs(a)
-# v_neg = -v_abs
-# v_sign = pyloops.sign(a)
-# meow = v_sign
+
+pyloops.if_(pyloops.and_(val > 0, val < 10))
+pyloops.store_(np.int32, ptr, val)
+pyloops.endif_()
+
+pyloops.if_(pyloops.not_(ptr == 0))
+val = pyloops.load_(np.int32, ptr)
+pyloops.endif_()
+
 pyloops.return_(val)
 pyloops.end_func()
 

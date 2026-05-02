@@ -444,60 +444,52 @@ static PyObject* PySign(PyObject* self, PyObject* arg) {
     return (PyObject*)py_res;
 }
 
-static PyObject *PyHi(PyObject *self, PyObject *args)
-{
-    using namespace loops;
-    IReg ptr, n, minpos_addr, maxpos_addr;
-    USE_CONTEXT_(ctx);
-    STARTFUNC_("minmaxloc", &ptr, &n, &minpos_addr, &maxpos_addr)
-    {
-        IReg i = CONST_(0);
-        IReg minpos = CONST_(0);
-        IReg maxpos = CONST_(0);
-        IReg minval = load_<int>(ptr);
-        IReg maxval = minval;
-        n *= sizeof(int);
+static PyObject* PyLoops_and(PyObject* self, PyObject* args) {
+    PyObject *obj_a, *obj_b;
+    if (!PyArg_ParseTuple(args, "OO", &obj_a, &obj_b)) return NULL;
 
-        getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
-        CodeCollecting* coll = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
-        IExpr condition = (i < n);
-        Expr condition_(condition.notype());        
-        coll->while_(condition_);
-        {
-            IReg x = load_<int>(ptr, i);
-
-            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
-            CodeCollecting* coll1 = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
-            IExpr condition1 = (x < minval);
-            Expr condition1_(condition1.notype());
-            coll1->if_(condition1_);
-            {
-                minval = x;
-                minpos = i;
-            }
-            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endif_();
-
-            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->newiopNoret(OP_STEM_CSTART, {});
-            CodeCollecting* coll2 = getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting();
-            IExpr condition2 = (x > maxval);
-            Expr condition2_(condition2.notype());
-            coll2->if_(condition2_);
-            {
-                maxval = x;
-                maxpos = i;
-            }
-            getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endif_();
-            i += sizeof(int);
-        }
-        getImpl((getImpl(&ctx)->getCurrentFunc()))->get_code_collecting()->endwhile_();        
-        IReg elemsize = CONST_(sizeof(int));
-        minpos /= elemsize;
-        maxpos /= elemsize;
-        store_<int>(minpos_addr, minpos);
-        store_<int>(maxpos_addr, maxpos);
-        RETURN_(0);
+    if (!PyObject_TypeCheck(obj_a, &PyIRegType) || !PyObject_TypeCheck(obj_b, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "and_() expects two IReg arguments");
+        return NULL;
     }
-    Py_RETURN_NONE;
+
+    loops::IExpr res = ((PyIReg*)obj_a)->getExpr() && ((PyIReg*)obj_b)->getExpr();
+
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(res);
+    return (PyObject*)py_res;
+}
+
+static PyObject* PyLoops_or(PyObject* self, PyObject* args) {
+    PyObject *obj_a, *obj_b;
+    if (!PyArg_ParseTuple(args, "OO", &obj_a, &obj_b)) return NULL;
+
+    if (!PyObject_TypeCheck(obj_a, &PyIRegType) || !PyObject_TypeCheck(obj_b, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "or_() expects two IReg arguments");
+        return NULL;
+    }
+
+    loops::IExpr res = ((PyIReg*)obj_a)->getExpr() || ((PyIReg*)obj_b)->getExpr();
+
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(res);
+    return (PyObject*)py_res;
+}
+
+static PyObject* PyLoops_not(PyObject* self, PyObject* arg) {
+    if (!PyObject_TypeCheck(arg, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "not_() expects an IReg argument");
+        return NULL;
+    }
+
+    loops::IExpr res = !(((PyIReg*)arg)->getExpr());
+
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(res);
+    return (PyObject*)py_res;
 }
 
 }
@@ -508,7 +500,6 @@ static PyMethodDef PyloopsMethods[] = {
     {"return_", (PyCFunction)PyReturn, METH_VARARGS, "Return from function"},
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
     {"get_func", PyGetFunc, METH_VARARGS, "Returns a Func object by name"},
-    {"hi", PyHi, METH_NOARGS, "End function."},
     {"load_", (PyCFunction)PyLoad, METH_VARARGS, "Load value from memory with given numpy type"},
     {"store_",  (PyCFunction)PyStore,  METH_VARARGS, "Store value to memory with given numpy type"},
     {"if_",       (PyCFunction)PyIf,       METH_O,      "Start an if block"},
@@ -520,6 +511,9 @@ static PyMethodDef PyloopsMethods[] = {
     {"break_",    (PyCFunction)PyBreak,    METH_VARARGS,  "Break loop"},
     {"continue_", (PyCFunction)PyContinue, METH_VARARGS,  "Continue loop"},
     {"sign", (PyCFunction)PySign, METH_O, "Returns an IExpr representing the sign of the input register (-1, 0, or 1)."},
+    {"and_", (PyCFunction)PyLoops_and, METH_VARARGS, "Logical AND"},
+    {"or_",  (PyCFunction)PyLoops_or,  METH_VARARGS, "Logical OR"},
+    {"not_", (PyCFunction)PyLoops_not, METH_O,       "Logical NOT"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
