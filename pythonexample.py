@@ -28,15 +28,17 @@ ptr = pyloops.IReg()
 a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr, a)
-v_abs = abs(a)
-v_neg = -v_abs
-v_sign = pyloops.sign(a)
-meow = v_sign
-pyloops.return_(meow)
+meow = pyloops.store_(np.int32, ptr, pyloops.IReg(5), 1024)
+val = pyloops.load_(np.int32, ptr, 4)
+# v_abs = abs(a)
+# v_neg = -v_abs
+# v_sign = pyloops.sign(a)
+# meow = v_sign
+pyloops.return_(val)
 pyloops.end_func()
 
 func = pyloops.get_func("aaaa")
-func.print_ir()
+func.print_ir() 
 func.print_assembly()
 
 addr = func.ptr()

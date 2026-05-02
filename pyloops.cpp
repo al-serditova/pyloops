@@ -1,4 +1,5 @@
 #include <Python.h>
+#include <string>
 #include "common.hpp"
 #include "ireg.hpp"
 #include "func.hpp"
@@ -11,6 +12,141 @@
 
 using namespace loops;
 // Context ctx;
+
+std::string get_numpy_type_name(PyObject* obj) {
+    if (!obj) return "";
+    PyObject* name_attr = nullptr;
+
+    // Сценарий 1: Нам передали np.dtype('int32') или объект, у которого уже есть .name
+    name_attr = PyObject_GetAttrString(obj, "name");
+
+    // Сценарий 2: Нам передали сам класс (np.int32). 
+    // У классов в Python есть атрибут __name__, который вернет "int32"
+    if (!name_attr) {
+        PyErr_Clear();
+        name_attr = PyObject_GetAttrString(obj, "__name__");
+    }
+
+    // Сценарий 3: Нам передали массив, берем obj.dtype.name
+    if (!name_attr) {
+        PyErr_Clear();
+        PyObject* dtype = PyObject_GetAttrString(obj, "dtype");
+        if (dtype) {
+            name_attr = PyObject_GetAttrString(dtype, "name");
+            Py_DECREF(dtype);
+        }
+    }
+
+    if (!name_attr) {
+        PyErr_Clear();
+        // Крайний случай: пробуем repr(obj) и смотрим, есть ли там знакомые слова, 
+        // но лучше просто вернуть пустоту и выдать ошибку.
+        return "";
+    }
+
+    // Извлекаем строку
+    const char* name_str = PyUnicode_AsUTF8(name_attr);
+    std::string result = name_str ? name_str : "";
+    Py_DECREF(name_attr);
+
+    // ВАЖНО: NumPy иногда возвращает имена вроде "intc" или "longlong" 
+    // в зависимости от платформы. Возможно, стоит добавить нормализацию.
+    return result;
+}
+
+template<typename T>
+PyObject* generic_load(const loops::IExpr& base, PyObject* obj_offset) {
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+
+    // Сценарий 1: load(type, base) -> Без смещения
+    if (obj_offset == nullptr || obj_offset == Py_None) {
+        py_res->expr = new loops::IExpr(loops::load_<T>(base));
+    }
+    // Сценарий 2: load(type, base, offset)
+    else {
+        if (PyObject_TypeCheck(obj_offset, &PyIRegType)) {
+            // Используем форму (base, IExpr offset)
+            loops::IExpr offset = ((PyIReg*)obj_offset)->getExpr();
+            py_res->expr = new loops::IExpr(loops::load_<T>(base, offset));
+        } 
+        else if (PyLong_Check(obj_offset)) {
+            // Используем форму (base, int64_t offset)
+            int64_t offset_val = PyLong_AsLongLong(obj_offset);
+            py_res->expr = new loops::IExpr(loops::load_<T>(base, offset_val));
+        } 
+        else {
+            Py_DECREF(py_res);
+            PyErr_SetString(PyExc_TypeError, "Offset must be an IReg or an integer");
+            return NULL;
+        }
+    }
+    return (PyObject*)py_res;
+}
+
+template<typename T>
+PyObject* generic_store(const loops::IExpr& base, PyObject* obj_offset, PyObject* obj_val)
+{
+    if (obj_val == nullptr) {
+        obj_val = obj_offset;
+        if (PyObject_TypeCheck(obj_val, &PyIRegType)) {
+            loops::store_<T>(base, ((PyIReg*)obj_val)->getExpr());
+        } else if (PyLong_Check(obj_val)) {
+            loops::store_<T>(base, (int64_t)PyLong_AsLongLong(obj_val));
+        } else {
+            PyErr_SetString(PyExc_TypeError, "Value must be IReg or int");
+            return NULL;
+        }
+    }
+    // Сценарий 2: store_(base, offset, value) -> 3 аргумента
+    else {
+        if (PyObject_TypeCheck(obj_offset, &PyIRegType))
+        {
+            loops::IExpr offset = ((PyIReg*)obj_offset)->getExpr();
+            if (PyObject_TypeCheck(obj_val, &PyIRegType))
+            {
+                loops::IExpr val = ((PyIReg*)obj_val)->getExpr();
+                loops::store_<T>(base, offset, val);
+            }
+            else if (PyLong_Check(obj_val))
+            {
+                int64_t val = PyLong_AsLongLong(obj_val);
+                loops::store_<T>(base, offset, val);
+            }
+            else
+            {
+                PyErr_SetString(PyExc_TypeError, "Stored must be IReg or int");
+                return NULL;
+            }
+        }
+        else if (PyLong_Check(obj_offset))
+        {
+            int64_t offset = PyLong_AsLongLong(obj_offset);
+            if (PyObject_TypeCheck(obj_val, &PyIRegType))
+            {
+                loops::IExpr val = ((PyIReg*)obj_val)->getExpr();
+                loops::store_<T>(base, offset, val);
+            }
+            else if (PyLong_Check(obj_val))
+            {
+                int64_t val = PyLong_AsLongLong(obj_val);
+                loops::store_<T>(base, offset, val);
+            }
+            else
+            {
+                PyErr_SetString(PyExc_TypeError, "Stored must be IReg or int");
+                return NULL;
+            }                
+        }
+        else
+        {
+            PyErr_SetString(PyExc_TypeError, "Offset must be IReg or int");
+            return NULL;
+        }
+    }
+    return Py_None;
+}
 
 extern "C"
 {
@@ -30,136 +166,87 @@ static PyObject* PyGetFunc(PyObject* self, PyObject* args) {
     return (PyObject*)py_f;
 }
 
-static PyObject* PyLoad_i32(PyObject* self, PyObject* args) {
+static PyObject* PyLoad(PyObject* self, PyObject* args) {
+    PyObject *obj_type = nullptr;
     PyObject *obj_ptr = nullptr;
     PyObject *obj_offset = nullptr;
 
-    // Парсим: первый обязательный (IReg), второй опциональный (int или IReg)
-    if (!PyArg_ParseTuple(args, "O|O", &obj_ptr, &obj_offset)) {
+    // load(type, ptr, [offset]) -> "OO|O"
+    if (!PyArg_ParseTuple(args, "OO|O", &obj_type, &obj_ptr, &obj_offset)) {
         return NULL;
     }
 
-    // Проверка базового указателя (обязательно IReg)
+    // Проверка: база должна быть IReg (указатель)
     if (!PyObject_TypeCheck(obj_ptr, &PyIRegType)) {
-        PyErr_SetString(PyExc_TypeError, "First argument must be an IReg (base pointer)");
+        PyErr_SetString(PyExc_TypeError, "The second argument (pointer) must be an IReg");
         return NULL;
     }
-    PyIReg* py_ptr = (PyIReg*)obj_ptr;
+    loops::IExpr base_expr = ((PyIReg*)obj_ptr)->getExpr();
 
-    // Подготавливаем выражение для адреса
-    // Начинаем с базового адреса
-    IExpr address_expr = py_ptr->getExpr();
-
-    // Если передан второй аргумент (смещение)
-    if (obj_offset != nullptr && obj_offset != Py_None) {
-        if (PyObject_TypeCheck(obj_offset, &PyIRegType)) {
-            // Смещение — это другой регистр
-            address_expr = address_expr + ((PyIReg*)obj_offset)->getExpr();
-        } 
-        else if (PyLong_Check(obj_offset)) {
-            // Смещение — это константа
-            int64_t offset_val = PyLong_AsLongLong(obj_offset);
-            address_expr = address_expr + offset_val;
-        } 
-        else {
-            PyErr_SetString(PyExc_TypeError, "Offset must be an IReg or an integer");
-            return NULL;
-        }
-    }
-
-    // Создаем новый объект PyIReg для результата
-    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
-    if (!py_res) return NULL;
-
-    // Инициализируем: по твоей новой логике используем expr
-    py_res->reg = nullptr;
-    // Генерируем load от итогового выражения адреса
-    py_res->expr = new IExpr(load_<int32_t>(address_expr));
-
-    return (PyObject*)py_res;
-}
-
-static PyObject* PyStore_i32(PyObject* self, PyObject* args) {
-    PyObject *obj_base = nullptr, *obj_offset = nullptr, *obj_val = nullptr;
-
-    // Парсим от 2 до 3 аргументов
-    if (!PyArg_ParseTuple(args, "OO|O", &obj_base, &obj_offset, &obj_val)) {
-        return NULL;
-    }
+    // Определяем тип через нашу обновленную функцию
+    std::string t = get_numpy_type_name(obj_type);
 
     try {
-        // База всегда должна быть регистром (адрес)
-        if (!PyObject_TypeCheck(obj_base, &PyIRegType)) {
-            PyErr_SetString(PyExc_TypeError, "Base must be an IReg");
-            return NULL;
-        }
-        loops::IExpr base = ((PyIReg*)obj_base)->getExpr();
+        if (t == "int32")   return generic_load<int32_t>(base_expr, obj_offset);
+        if (t == "uint32")  return generic_load<uint32_t>(base_expr, obj_offset);
+        if (t == "int64")   return generic_load<int64_t>(base_expr, obj_offset);
+        if (t == "uint64")  return generic_load<uint64_t>(base_expr, obj_offset);
+        if (t == "int16")   return generic_load<int16_t>(base_expr, obj_offset);
+        if (t == "uint16")  return generic_load<uint16_t>(base_expr, obj_offset);
+        if (t == "int8")    return generic_load<int8_t>(base_expr, obj_offset);
+        if (t == "uint8")   return generic_load<uint8_t>(base_expr, obj_offset);
+        if (t == "float32") return generic_load<float>(base_expr, obj_offset);
+        if (t == "float64") return generic_load<double>(base_expr, obj_offset);
 
-        // Сценарий 1: store_i32(base, value) -> 2 аргумента
-        if (obj_val == nullptr) {
-            if (PyObject_TypeCheck(obj_offset, &PyIRegType)) {
-                loops::store_<int32_t>(base, ((PyIReg*)obj_offset)->getExpr());
-            } else if (PyLong_Check(obj_offset)) {
-                loops::store_<int32_t>(base, (int64_t)PyLong_AsLongLong(obj_offset));
-            } else {
-                PyErr_SetString(PyExc_TypeError, "Value must be IReg or int");
-                return NULL;
-            }
-        }
-        // Сценарий 2: store_i32(base, offset, value) -> 3 аргумента
-        else {
-            if (PyObject_TypeCheck(obj_offset, &PyIRegType))
-            {
-                loops::IExpr offset = ((PyIReg*)obj_offset)->getExpr();
-                if (PyObject_TypeCheck(obj_val, &PyIRegType))
-                {
-                    loops::IExpr val = ((PyIReg*)obj_val)->getExpr();
-                    loops::store_<int32_t>(base, offset, val);
-                }
-                else if (PyLong_Check(obj_val))
-                {
-                    int64_t val = PyLong_AsLongLong(obj_val);
-                    loops::store_<int32_t>(base, offset, val);
-                }
-                else
-                {
-                    PyErr_SetString(PyExc_TypeError, "Stored must be IReg or int");
-                    return NULL;
-                }
-            }
-            else if (PyLong_Check(obj_offset))
-            {
-                int64_t offset = PyLong_AsLongLong(obj_offset);
-                if (PyObject_TypeCheck(obj_val, &PyIRegType))
-                {
-                    loops::IExpr val = ((PyIReg*)obj_val)->getExpr();
-                    loops::store_<int32_t>(base, offset, val);
-                }
-                else if (PyLong_Check(obj_val))
-                {
-                    int64_t val = PyLong_AsLongLong(obj_val);
-                    loops::store_<int32_t>(base, offset, val);
-                }
-                else
-                {
-                    PyErr_SetString(PyExc_TypeError, "Stored must be IReg or int");
-                    return NULL;
-                }                
-            }
-            else
-            {
-                PyErr_SetString(PyExc_TypeError, "Offset must be IReg or int");
-                return NULL;
-            }
-        }
+        PyErr_Format(PyExc_TypeError, "Loops load doesn't support numpy type: '%s'", t.c_str());
+        return NULL;
     } catch (const std::exception& e) {
         PyErr_SetString(PyExc_RuntimeError, e.what());
         return NULL;
     }
-
-    Py_RETURN_NONE;
 }
 
+static PyObject* PyStore(PyObject* self, PyObject* args) {
+    PyObject *obj_type = nullptr;
+    PyObject *obj_base = nullptr;
+    PyObject *obj_off_or_val = nullptr;
+    PyObject *obj_val = nullptr;
+
+    // "OOOO" — 3 обязательных, 1 опциональный (|)
+    if (!PyArg_ParseTuple(args, "OOO|O", &obj_type, &obj_base, &obj_off_or_val, &obj_val)) {
+        return NULL;
+    }
+
+    // Проверяем базу (адрес)
+    if (!PyObject_TypeCheck(obj_base, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Base must be an IReg pointer");
+        return NULL;
+    }
+    loops::IExpr base_expr = ((PyIReg*)obj_base)->getExpr();
+
+    // Получаем имя типа NumPy
+    std::string t = get_numpy_type_name(obj_type);
+
+    try {
+        if (t == "int32")   return generic_store<int32_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "uint32")  return generic_store<uint32_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "int64")   return generic_store<int64_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "uint64")  return generic_store<uint64_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "int16")   return generic_store<int16_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "uint16")  return generic_store<uint16_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "int8")    return generic_store<int8_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "uint8")   return generic_store<uint8_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "float16") return generic_store<f16_t>(base_expr, obj_off_or_val, obj_val);
+        if (t == "float32") return generic_store<float>(base_expr, obj_off_or_val, obj_val);
+        if (t == "float64") return generic_store<double>(base_expr, obj_off_or_val, obj_val);
+        
+        PyErr_Format(PyExc_TypeError, "Loops doesn't support numpy type: %s", t.c_str());
+        return NULL;
+    } catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+}
 
 static PyObject* PyIf(PyObject* self, PyObject* obj_a) {
     if (!PyObject_TypeCheck(obj_a, &PyIRegType)) {
@@ -422,8 +509,8 @@ static PyMethodDef PyloopsMethods[] = {
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
     {"get_func", PyGetFunc, METH_VARARGS, "Returns a Func object by name"},
     {"hi", PyHi, METH_NOARGS, "End function."},
-    {"load_i32", (PyCFunction)PyLoad_i32, METH_VARARGS, "Load i32 from base [ + offset]"},
-    {"store_i32",  (PyCFunction)PyStore_i32,  METH_VARARGS, "Store i32 value to memory address"},
+    {"load_", (PyCFunction)PyLoad, METH_VARARGS, "Load value from memory with given numpy type"},
+    {"store_",  (PyCFunction)PyStore,  METH_VARARGS, "Store value to memory with given numpy type"},
     {"if_",       (PyCFunction)PyIf,       METH_O,      "Start an if block"},
     {"endif_",    (PyCFunction)PyEndIf,    METH_NOARGS, "End an if block"},
     {"else_",     (PyCFunction)PyElse,     METH_NOARGS,  "Else block"},

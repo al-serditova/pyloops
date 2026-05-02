@@ -317,23 +317,19 @@ static PyObject* PyIReg_unary(PyObject* v, int type) {
     loops::IExpr result_expr;
 
     switch (type) {
-        case 0: // Унарный минус (-)
+        case OP_NEG:
             result_expr = -(self->getExpr());
             break;
-        case 1: // Абсолютное значение abs()
+        case OP_ABS:
             result_expr = loops::abs(self->getExpr());
             break;
-        case 2: // Инверсия (~)
+        case OP_NOT:
             result_expr = ~(self->getExpr());
             break;
         default:
             Py_RETURN_NOTIMPLEMENTED;
     }
 
-    // или вот так
-    // if (op_type == 0) res = -(self->getExpr());      // Унарный минус
-    // else if (op_type == 1) res = loops::abs(self->getExpr()); // Abs
-    // else if (op_type == 2) res = ~(self->getExpr()); // Invert
     PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
     if (!py_res) return NULL;
     py_res->reg = nullptr;
@@ -341,9 +337,9 @@ static PyObject* PyIReg_unary(PyObject* v, int type) {
     return (PyObject*)py_res;
 }
 
-static PyObject* PyIReg_negative(PyObject* v) { return PyIReg_unary(v, 0); }
-static PyObject* PyIReg_abs(PyObject* v)      { return PyIReg_unary(v, 1); }
-static PyObject* PyIReg_invert(PyObject* v)   { return PyIReg_unary(v, 2); }
+static PyObject* PyIReg_negative(PyObject* v) { return PyIReg_unary(v, OP_NEG); }
+static PyObject* PyIReg_abs(PyObject* v)      { return PyIReg_unary(v, OP_ABS); }
+static PyObject* PyIReg_invert(PyObject* v)   { return PyIReg_unary(v, OP_NOT); }
 
 
 static PyNumberMethods PyIReg_as_number = {
