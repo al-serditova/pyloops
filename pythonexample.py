@@ -33,7 +33,7 @@ val = pyloops.load_(np.int32, ptr, 4)
 
 pyloops.if_(pyloops.and_(val > 0, val < 10))
 pyloops.store_(np.int32, ptr, val)
-pyloops.endif_()
+pyloops.endif_() 
 
 pyloops.if_(pyloops.not_(ptr == 0))
 val = pyloops.load_(np.int32, ptr)

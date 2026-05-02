@@ -403,9 +403,7 @@ static PyObject* PyReturn(PyObject* self, PyObject* args) {
         else if (PyLong_Check(obj)) {
             int64_t val = (int64_t)PyLong_AsLongLong(obj);
             if (val == -1 && PyErr_Occurred()) return NULL;
-            
-            // Вопрос: оборачиваем в CONST_ ??
-            RETURN_(loops::IExpr(CONST_(val)));
+            RETURN_(val);
         }
         else {
             PyErr_SetString(PyExc_TypeError, "Argument must be IReg, int or None");
