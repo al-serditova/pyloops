@@ -198,7 +198,7 @@ static PyObject* PyIReg_irshift(PyObject* self, PyObject* other) {
     return PyIReg_inplace(self, other, OP_SHR);
 }
 
-static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
+PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
     USE_CONTEXT_(ctx);
     loops::IExpr result_expr;
 
@@ -216,7 +216,12 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
             case OP_OR:  result_expr = left | right; break;
             case OP_XOR: result_expr = left ^ right; break;
             case OP_SHL: result_expr = left << right; break;
-            case OP_SHR: result_expr = left >> right; break;
+            case OP_SAR: result_expr = left >> right; break; // АРИФМЕТИЧЕСКИЙ (со знаком)
+            case OP_SHR: result_expr = loops::ushift_right(left, right); break; // ЛОГИЧЕСКИЙ (беззнаковый)
+            case OP_ULE: result_expr = loops::ule(left, right); break;
+            case OP_UGT: result_expr = loops::ugt(left, right); break;
+            case OP_MIN: result_expr = loops::min(left, right); break;
+            case OP_MAX: result_expr = loops::max(left, right); break;
             default: Py_RETURN_NOTIMPLEMENTED;
         }
     }
@@ -234,7 +239,12 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
             case OP_OR:  result_expr = left | right; break;
             case OP_XOR: result_expr = left ^ right; break;
             case OP_SHL: result_expr = left << right; break;
-            case OP_SHR: result_expr = left >> right; break;
+            case OP_SAR: result_expr = left >> right; break;
+            case OP_SHR: result_expr = loops::ushift_right(left, right); break;
+            case OP_ULE: result_expr = loops::ule(left, right); break;
+            case OP_UGT: result_expr = loops::ugt(left, right); break;
+            case OP_MIN: result_expr = loops::min(left, right); break;
+            case OP_MAX: result_expr = loops::max(left, right); break;
             default: Py_RETURN_NOTIMPLEMENTED;
         }
     }
@@ -252,7 +262,12 @@ static PyObject* PyIReg_binary(PyObject* v, PyObject* w, int type) {
             case OP_OR:  result_expr = left | right; break;
             case OP_XOR: result_expr = left ^ right; break;
             case OP_SHL: result_expr = left << right; break;
-            case OP_SHR: result_expr = left >> right; break;
+            case OP_SAR: result_expr = left >> right; break;
+            case OP_SHR: result_expr = loops::ushift_right(left, right); break;
+            case OP_ULE: result_expr = loops::ule(left, right); break;
+            case OP_UGT: result_expr = loops::ugt(left, right); break;
+            case OP_MIN: result_expr = loops::min(left, right); break;
+            case OP_MAX: result_expr = loops::max(left, right); break;
             default: Py_RETURN_NOTIMPLEMENTED;
         }
     }
@@ -305,7 +320,7 @@ static PyObject* PyIReg_lshift(PyObject* v, PyObject* w) {
 }
 
 static PyObject* PyIReg_rshift(PyObject* v, PyObject* w) {
-    return PyIReg_binary(v, w, OP_SHR);
+    return PyIReg_binary(v, w, OP_SAR);
 }
 
 static PyObject* PyIReg_unary(PyObject* v, int type) {
@@ -341,6 +356,34 @@ static PyObject* PyIReg_negative(PyObject* v) { return PyIReg_unary(v, OP_NEG); 
 static PyObject* PyIReg_abs(PyObject* v)      { return PyIReg_unary(v, OP_ABS); }
 static PyObject* PyIReg_invert(PyObject* v)   { return PyIReg_unary(v, OP_NOT); }
 
+static PyObject* PyIReg_pow(PyObject* v, PyObject* w, PyObject* z) {
+    // 1. Проверяем, что первый аргумент - наш IReg
+    if (!PyObject_TypeCheck(v, &PyIRegType)) {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // 2. Проверяем, что степень (второй аргумент) - это целое число
+    if (!PyLong_Check(w)) {
+        PyErr_SetString(PyExc_TypeError, "Exponent must be an integer constant");
+        return NULL;
+    }
+
+    int p = (int)PyLong_AsLong(w);
+    USE_CONTEXT_(ctx); // Твой макрос для контекста
+
+    // Достаем IExpr из объекта v
+    loops::IExpr base = ((PyIReg*)v)->getExpr();
+    
+    // Вызываем ту самую функцию из loops напрямую!
+    loops::IExpr result_expr = loops::pow(base, p);
+
+    // Оборачиваем результат в новый PyIReg
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(result_expr);
+    return (PyObject*)py_res;
+}
 
 static PyNumberMethods PyIReg_as_number = {
     .nb_add = (binaryfunc)PyIReg_add,    
@@ -348,7 +391,7 @@ static PyNumberMethods PyIReg_as_number = {
     .nb_multiply = (binaryfunc)PyIReg_mul,
     .nb_remainder = (binaryfunc)PyIReg_mod,
     .nb_divmod = 0,  
-    .nb_power = 0,  
+    .nb_power = (ternaryfunc)PyIReg_pow, 
     .nb_negative = (unaryfunc)PyIReg_negative,
     .nb_positive = 0,
     .nb_absolute = (unaryfunc)PyIReg_abs,

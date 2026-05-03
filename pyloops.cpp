@@ -490,6 +490,103 @@ static PyObject* PyLoops_not(PyObject* self, PyObject* arg) {
     return (PyObject*)py_res;
 }
 
+PyObject* PyIReg_ushift_right(PyObject* self, PyObject* args) {
+    PyObject *v, *w;
+    // v - что сдвигаем, w - на сколько
+    if (!PyArg_ParseTuple(args, "OO", &v, &w)) {
+        return NULL;
+    }
+    return PyIReg_binary(v, w, OP_SHR);
+}
+
+PyObject* PyIReg_ule(PyObject* self, PyObject* args) {
+    PyObject *v, *w;
+    if (!PyArg_ParseTuple(args, "OO", &v, &w)) return NULL;
+    return PyIReg_binary(v, w, OP_ULE);
+}
+
+PyObject* PyIReg_uge(PyObject* self, PyObject* args) {
+    PyObject *v, *w;
+    if (!PyArg_ParseTuple(args, "OO", &v, &w)) return NULL;
+    return PyIReg_binary(w, v, OP_ULE); // Меняем местами!
+}
+
+PyObject* PyIReg_ugt(PyObject* self, PyObject* args) {
+    PyObject *v, *w;
+    if (!PyArg_ParseTuple(args, "OO", &v, &w)) return NULL;
+    return PyIReg_binary(v, w, OP_UGT);
+}
+
+PyObject* PyIReg_ult(PyObject* self, PyObject* args) {
+    PyObject *v, *w;
+    if (!PyArg_ParseTuple(args, "OO", &v, &w)) return NULL;
+    return PyIReg_binary(w, v, OP_UGT); // Меняем местами!
+}
+
+PyObject* PyIReg_min(PyObject* self, PyObject* args) {
+    PyObject *v, *w;
+    if (!PyArg_ParseTuple(args, "OO", &v, &w)) {
+        return NULL;
+    }
+    return PyIReg_binary(v, w, OP_MIN);
+}
+
+PyObject* PyIReg_max(PyObject* self, PyObject* args) {
+    PyObject *v, *w;
+    if (!PyArg_ParseTuple(args, "OO", &v, &w)) {
+        return NULL;
+    }
+    return PyIReg_binary(v, w, OP_MAX);
+}
+
+static PyObject* PyIReg_select(PyObject* self, PyObject* args) {
+    PyObject *py_cond, *py_true, *py_false;
+    
+    // Парсим три аргумента: условие, значение-если-истина, значение-если-ложь
+    if (!PyArg_ParseTuple(args, "OOO", &py_cond, &py_true, &py_false)) {
+        return NULL;
+    }
+
+    // 1. Условие обязательно должно быть IReg (IExpr)
+    if (!PyObject_TypeCheck(py_cond, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Condition must be an IReg");
+        return NULL;
+    }
+    loops::IExpr cond = ((PyIReg*)py_cond)->getExpr();
+    
+    USE_CONTEXT_(ctx);
+    loops::IExpr result_expr;
+
+    // Проверяем типы true_ и false_ для выбора правильной перегрузки loops::select
+    bool true_is_reg = PyObject_TypeCheck(py_true, &PyIRegType);
+    bool false_is_reg = PyObject_TypeCheck(py_false, &PyIRegType);
+
+    // Обрабатываем 4 комбинации, которые мы видели в loops.hpp
+    if (true_is_reg && false_is_reg) {
+        result_expr = loops::select(cond, ((PyIReg*)py_true)->getExpr(), ((PyIReg*)py_false)->getExpr());
+    }
+    else if (!true_is_reg && false_is_reg) {
+        int64_t val_t = PyLong_AsLongLong(py_true);
+        result_expr = loops::select(cond, val_t, ((PyIReg*)py_false)->getExpr());
+    }
+    else if (true_is_reg && !false_is_reg) {
+        int64_t val_f = PyLong_AsLongLong(py_false);
+        result_expr = loops::select(cond, ((PyIReg*)py_true)->getExpr(), val_f);
+    }
+    else { // Оба - константы
+        int64_t val_t = PyLong_AsLongLong(py_true);
+        int64_t val_f = PyLong_AsLongLong(py_false);
+        result_expr = loops::select(cond, val_t, val_f);
+    }
+
+    // Оборачиваем результат в новый PyIReg
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(result_expr);
+    return (PyObject*)py_res;
+}
+
 }
 
 // Таблица методов
@@ -512,6 +609,14 @@ static PyMethodDef PyloopsMethods[] = {
     {"and_", (PyCFunction)PyLoops_and, METH_VARARGS, "Logical AND"},
     {"or_",  (PyCFunction)PyLoops_or,  METH_VARARGS, "Logical OR"},
     {"not_", (PyCFunction)PyLoops_not, METH_O,       "Logical NOT"},
+    {"ushift_right", (PyCFunction)PyIReg_ushift_right, METH_VARARGS, "Logical shift right (unsigned)"},
+    {"ule_",         (PyCFunction)PyIReg_ule,    METH_VARARGS, "Unsigned less or equal"},
+    {"uge_",         (PyCFunction)PyIReg_uge,    METH_VARARGS, "Unsigned greater or equal"},
+    {"ult_",         (PyCFunction)PyIReg_ult,    METH_VARARGS, "Unsigned less than"},
+    {"ugt_",         (PyCFunction)PyIReg_ugt,    METH_VARARGS, "Unsigned greater than"},
+    {"min_",         (PyCFunction)PyIReg_min,    METH_VARARGS, "Minimum of two values"},
+    {"max_",         (PyCFunction)PyIReg_max,    METH_VARARGS, "Maximum of two values"},
+    {"select_", (PyCFunction)PyIReg_select, METH_VARARGS, "Conditional select: cond ? true : false"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
