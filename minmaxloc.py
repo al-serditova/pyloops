@@ -13,11 +13,11 @@ pyloops.start_func("minmaxloc", ptr, n, minpos_addr, maxpos_addr)
 i = pyloops.IReg(0)
 minpos = pyloops.IReg(0)
 maxpos = pyloops.IReg(0)
-minval = pyloops.IReg(pyloops.load_i32(ptr))
+minval = pyloops.IReg(pyloops.load_(np.int32, ptr))
 maxval = pyloops.IReg(minval)
 n *= 4
 pyloops.while_(i < n)
-x = pyloops.IReg(pyloops.load_i32(ptr, i))
+x = pyloops.IReg(pyloops.load_(np.int32, ptr, i))
 pyloops.if_(x < minval)
 minval.assign = x
 minpos.assign = i
@@ -31,8 +31,8 @@ pyloops.endwhile_()
 elemsize = pyloops.IReg(4)
 minpos //= elemsize
 maxpos //= elemsize
-pyloops.store_i32(minpos_addr, minpos)
-pyloops.store_i32(maxpos_addr, maxpos)
+pyloops.store_(np.int32, minpos_addr, minpos)
+pyloops.store_(np.int32, maxpos_addr, maxpos)
 pyloops.return_(0)
 pyloops.end_func()
 

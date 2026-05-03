@@ -12,7 +12,7 @@ res = pyloops.IReg(-4)
 n *= 4
 
 pyloops.while_(i < n)
-x = pyloops.IReg(pyloops.load_i32(ptr, i))
+x = pyloops.IReg(pyloops.load_(np.int32, ptr, i))
 pyloops.if_(x < 0)
 i += 4
 pyloops.continue_()
