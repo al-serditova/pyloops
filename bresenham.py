@@ -105,7 +105,6 @@ pyloops.end_func()
 
 # --- Извлечение и запуск ---
 func = pyloops.get_func("bresenham")
-# func.print_assembly() # Проверь, как красиво легли инструкции!
 func.print_ir()
 func.print_assembly()
 
