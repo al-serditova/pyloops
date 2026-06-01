@@ -11,12 +11,9 @@ n = pyloops.IReg()
 pyloops.start_func("nullify_msb_lsb_v", iptr, omptr, olptr, n)
 offset = pyloops.IReg(0)
 n *= 4
-
 one = pyloops.VReg(np.uint32, 1)
 pyloops.while_(offset < n)
-pyloops.storevec(olptr, offset, one)
-one.assign = one + one
-pyloops.storevec(omptr, offset, one)
+
 offset += pyloops.vbytes()
 
 pyloops.endwhile_()
@@ -74,19 +71,3 @@ print(msb)
 #         print("Incorrect LSB")
 #     if msb[vnum] != remsb:
 #         print("Incorrect MSB")
-
-
-
-# DUBUG0: True
-# DUBUG1: False
-# DUBUG2: False
-# DUBUG3: True
-# DUBUG4: False
-
-        # printf("DUBUG0: %s\n", target.is_leaf()? "True":"False");
-        # printf("DUBUG1: %s\n", target.leaf().tag == Arg::IREG? "True":"False");
-        # printf("DUBUG2: %s\n", !fromwho.is_vector()? "True":"False");
-        # printf("DUBUG3: %s\n", (target.leaf().tag == Arg::VREG)? "True":"False");
-        # printf("DUBUG4: %s\n", fromwho.type() == target.leaf().elemtype? "True":"False");
-        # LOOPS_ASSERT(target.is_leaf() && ((target.leaf().tag == Arg::IREG && !fromwho.is_vector()) || (target.leaf().tag == Arg::VREG && fromwho.type() == target.leaf().elemtype)));
-        # LOOPS_ASSERT(True             && ((False                          && False               ) || (True                           && fromwho.type() == target.leaf().elemtype)));

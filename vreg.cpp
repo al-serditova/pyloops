@@ -71,6 +71,11 @@ int PyVReg_init(PyVReg *self, PyObject *args, PyObject *kwds)
     if(self->type == -1)
         return 0;
 
+    const bool isSignedInt = self->type == TYPE_I8 || self->type == TYPE_I16 || self->type == TYPE_I32 || self->type == TYPE_I64;
+    const bool isUnsignedInt = self->type == TYPE_U8 || self->type == TYPE_U16 || self->type == TYPE_U32 || self->type == TYPE_U64;
+    const bool isFloat = self->type == TYPE_FP16 || self->type == TYPE_FP32 || self->type == TYPE_FP64;
+    USE_CONTEXT_(ctx);
+
     if (maybe_other != nullptr && maybe_other != Py_None) {
         // Сценарий 1: Передан другой VReg
         if (PyObject_TypeCheck(maybe_other, &PyVRegType)) {
@@ -100,45 +105,73 @@ int PyVReg_init(PyVReg *self, PyObject *args, PyObject *kwds)
                 return -1;
             }
         }
-        // Сценарий 2: Передано целое число (int64_t)
-        // else if (self->type == TYPE_I64 && PyLong_Check(maybe_other)) {
-        //     int64_t val = (int64_t)PyLong_AsLongLong(maybe_other);
-        //     // Если возникла ошибка конвертации (число слишком большое)
-        //     if (val == -1 && PyErr_Occurred()) {
-        //         return -1;
-        //     }
-        //     self->reg = new VReg<int64_t>(VCONST_(int64_t, val)); break;
-        // }
-        else if (PyLong_Check(maybe_other)) {
-            int64_t val = (int64_t)PyLong_AsLongLong(maybe_other);
-            
-            // Если возникла ошибка конвертации (число слишком большое)
-            if (val == -1 && PyErr_Occurred()) {
+        // Сценарий 2.1: Передано целое число (int/long) со стороны Python
+        else if ((isSignedInt || isUnsignedInt || isFloat) && PyLong_Check(maybe_other))
+        {
+            if(isSignedInt)
+            {
+                int64_t val = (int64_t)PyLong_AsLongLong(maybe_other);
+                if (val == -1 && PyErr_Occurred()) {
+                    return -1;
+                }
+                switch (self->type)
+                {
+                    case (TYPE_I8):   self->reg = new VReg<int8_t>(VCONST_(int8_t, (int8_t)val)); break;
+                    case (TYPE_I16):  self->reg = new VReg<int16_t>(VCONST_(int16_t, (int16_t)val)); break;
+                    case (TYPE_I32):  self->reg = new VReg<int32_t>(VCONST_(int32_t, (int32_t)val)); break;
+                    case (TYPE_I64):  self->reg = new VReg<int64_t>(VCONST_(int64_t, (int64_t)val)); break;
+                    default: break;
+                }
+            }
+            else if(isUnsignedInt)
+            {
+                uint64_t val = (int64_t)PyLong_AsUnsignedLongLong(maybe_other);
+                if (val == -1 && PyErr_Occurred()) {
+                    return -1;
+                }
+                switch (self->type)
+                {
+                    case (TYPE_U8):   self->reg = new VReg<uint8_t>(VCONST_(uint8_t, (uint8_t)val)); break;
+                    case (TYPE_U16):  self->reg = new VReg<uint16_t>(VCONST_(uint16_t, (uint16_t)val)); break;
+                    case (TYPE_U32):  self->reg = new VReg<uint32_t>(VCONST_(uint32_t, (uint32_t)val)); break;
+                    case (TYPE_U64):  self->reg = new VReg<uint64_t>(VCONST_(uint64_t, (uint64_t)val)); break;
+                    default: break;
+                }
+            }
+            else if(isFloat)
+            {
+                int64_t val = (int64_t)PyLong_AsLongLong(maybe_other);
+                switch (self->type)
+                {
+                    case (TYPE_FP16): self->reg = new VReg<f16_t>(VCONST_(f16_t, (f16_t)(float)val)); break;
+                    case (TYPE_FP32): self->reg = new VReg<float>(VCONST_(float, (float)val)); break;
+                    case (TYPE_FP64): self->reg = new VReg<double>(VCONST_(double, val)); break;
+                }
+            }
+        }
+        // Сценарий 2.2: Передано число с плавающей точкой (float) со стороны Python
+        else if (isFloat && PyFloat_Check(maybe_other)) {
+            double val = PyFloat_AsDouble(maybe_other);
+            if (val == -1.0 && PyErr_Occurred()) {
                 return -1;
             }
-            USE_CONTEXT_(ctx);
             switch (self->type)
             {
-                case (TYPE_I8):   self->reg = new VReg<int8_t>(VCONST_(int8_t, val)); break;
-                case (TYPE_U8):   self->reg = new VReg<uint8_t>(VCONST_(uint8_t, val)); break;
-                case (TYPE_I16):  self->reg = new VReg<int16_t>(VCONST_(int16_t, val)); break;
-                case (TYPE_U16):  self->reg = new VReg<uint16_t>(VCONST_(uint16_t, val)); break;
-                case (TYPE_I32):  self->reg = new VReg<int32_t>(VCONST_(int32_t, val)); break;
-                case (TYPE_U32):  self->reg = new VReg<uint32_t>(VCONST_(uint32_t, val)); break;
-                case (TYPE_I64):  self->reg = new VReg<int64_t>(VCONST_(int64_t, val)); break;
-                case (TYPE_U64):  self->reg = new VReg<uint64_t>(VCONST_(uint64_t, val)); break;
-                case (TYPE_FP16): self->reg = new VReg<f16_t>(VCONST_(f16_t, val)); break;
-                case (TYPE_FP32): self->reg = new VReg<float>(VCONST_(float, val)); break;
+                case (TYPE_FP16): self->reg = new VReg<f16_t>(VCONST_(f16_t, (f16_t)(float)val)); break;
+                case (TYPE_FP32): self->reg = new VReg<float>(VCONST_(float, (float)val)); break;
                 case (TYPE_FP64): self->reg = new VReg<double>(VCONST_(double, val)); break;
-            default:
-                break;
+                
+                // Если пытаются проинициализировать целочисленный вектор дробным числом — кидаем ошибку
+                default:
+                    PyErr_SetString(PyExc_TypeError, "Cannot initialize integer vector register with a float constant");
+                    return -1;
             }
         }
         else {
-            PyErr_SetString(PyExc_TypeError, "Argument must be an VReg object or an integer");
+            PyErr_SetString(PyExc_TypeError, "Argument must be an VReg object, an integer, or a float");
             return -1;
         }
-    } 
+    }
     else {
         // Сценарий 3: Без аргументов
         switch (self->type)
@@ -331,45 +364,20 @@ PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode) {
     return (PyObject*)py_res;
 }
 
-static PyObject* PyVReg_add(PyObject* v, PyObject* w) {
-    return PyVReg_binary(v, w, VOP_ADD);
-}
+static PyObject* PyVReg_add(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_ADD); }
+static PyObject* PyVReg_sub(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_SUB); }
+static PyObject* PyVReg_mul(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_MUL); }
+static PyObject* PyVReg_div(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_DIV); }
 
-// static PyObject* PyVReg_sub(PyObject* v, PyObject* w) {
-//     return PyVReg_binary(v, w, OP_SUB);
-// }
+static PyObject* PyVReg_and(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_AND); }
+static PyObject* PyVReg_or(PyObject* v, PyObject* w)  { return PyVReg_binary(v, w, VOP_OR); }
+static PyObject* PyVReg_xor(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_XOR); }
 
-// static PyObject* PyVReg_mul(PyObject* v, PyObject* w) { 
-//     return PyVReg_binary(v, w, OP_MUL);
-// }
+// static PyObject* PyVReg_lshift(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_SHL); } // Логический влево
+// static PyObject* PyVReg_rshift_logical(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_SHR); } // Логический вправо
+// static PyObject* PyVReg_rshift(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_SAR); } // Арифметический вправо (сохраняет знак)
 
-// static PyObject* PyVReg_div(PyObject* v, PyObject* w) {
-//     return PyVReg_binary(v, w, OP_DIV);
-// }
 
-// static PyObject* PyVReg_mod(PyObject* v, PyObject* w) {
-//     return PyVReg_binary(v, w, OP_MOD);
-// }
-
-// static PyObject* PyVReg_and(PyObject* v, PyObject* w) {
-//     return PyVReg_binary(v, w, OP_AND);
-// }
-
-// static PyObject* PyVReg_or(PyObject* v, PyObject* w)  {
-//     return PyVReg_binary(v, w, OP_OR);
-// }
-
-// static PyObject* PyVReg_xor(PyObject* v, PyObject* w) {
-//     return PyVReg_binary(v, w, OP_XOR);
-// }
-
-// static PyObject* PyVReg_lshift(PyObject* v, PyObject* w) {
-//     return PyVReg_binary(v, w, OP_SHL);
-// }
-
-// static PyObject* PyVReg_rshift(PyObject* v, PyObject* w) {
-//     return PyVReg_binary(v, w, OP_SAR);
-// }
 
 // static PyObject* PyVReg_unary(PyObject* v, int type) {
 //     if (!PyObject_TypeCheck(v, &PyVRegType)) {
@@ -434,22 +442,15 @@ static PyObject* PyVReg_add(PyObject* v, PyObject* w) {
 // }
 
 static PyNumberMethods PyVReg_as_number = {
-    .nb_add = (binaryfunc)PyVReg_add,    
-    // .nb_subtract = (binaryfunc)PyVReg_sub,
-    // .nb_multiply = (binaryfunc)PyVReg_mul,
-    // .nb_remainder = (binaryfunc)PyVReg_mod,
-    // .nb_divmod = 0,  
-    // .nb_power = (ternaryfunc)PyVReg_pow, 
-    // .nb_negative = (unaryfunc)PyVReg_negative,
-    // .nb_positive = 0,
-    // .nb_absolute = (unaryfunc)PyVReg_abs,
-    // .nb_bool = 0,   
-    // .nb_invert = (unaryfunc)PyVReg_invert,  
-    // .nb_lshift = (binaryfunc)PyVReg_lshift,
-    // .nb_rshift = (binaryfunc)PyVReg_rshift,
-    // .nb_and = (binaryfunc)PyVReg_and,
-    // .nb_xor = (binaryfunc)PyVReg_xor,
-    // .nb_or = (binaryfunc)PyVReg_or,    
+    .nb_add = (binaryfunc)PyVReg_add,
+    .nb_subtract = (binaryfunc)PyVReg_sub,
+    .nb_multiply = (binaryfunc)PyVReg_mul,
+    // .nb_lshift = (binaryfunc)PyVReg_lshift,      
+    // .nb_rshift = (binaryfunc)PyVReg_rshift, 
+    .nb_and = (binaryfunc)PyVReg_and,  
+    .nb_xor = (binaryfunc)PyVReg_xor,        
+    .nb_or = (binaryfunc)PyVReg_or,   
+    .nb_true_divide = (binaryfunc)PyVReg_div,
     // .nb_int = 0,     
     // .nb_float = 0,                       
     // .nb_inplace_add = (binaryfunc)PyVReg_iadd, 

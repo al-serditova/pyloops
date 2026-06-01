@@ -543,19 +543,32 @@ PyObject* PyIReg_ult(PyObject* self, PyObject* args) {
     return PyIReg_binary(w, v, OP_UGT); // Меняем местами!
 }
 
-PyObject* PyIReg_min(PyObject* self, PyObject* args) {
+PyObject* Py_min(PyObject* self, PyObject* args) {
     PyObject *v, *w;
     if (!PyArg_ParseTuple(args, "OO", &v, &w)) {
         return NULL;
     }
+
+    // Если оба операнда — векторные регистры, вызываем векторный MIN
+    if (PyObject_TypeCheck(v, &PyVRegType) && PyObject_TypeCheck(w, &PyVRegType)) {
+        return PyVReg_binary(v, w, VOP_MIN);
+    }
+    
+    // Во всех остальных случаях отдаем скалярному бинарному обработчику
     return PyIReg_binary(v, w, OP_MIN);
 }
 
-PyObject* PyIReg_max(PyObject* self, PyObject* args) {
+PyObject* Py_max(PyObject* self, PyObject* args) {
     PyObject *v, *w;
     if (!PyArg_ParseTuple(args, "OO", &v, &w)) {
         return NULL;
     }
+
+    // Если оба операнда — векторные регистры, вызываем векторный MAX
+    if (PyObject_TypeCheck(v, &PyVRegType) && PyObject_TypeCheck(w, &PyVRegType)) {
+        return PyVReg_binary(v, w, VOP_MAX); 
+    }
+
     return PyIReg_binary(v, w, OP_MAX);
 }
 
@@ -639,8 +652,8 @@ static PyMethodDef PyloopsMethods[] = {
     {"uge_",         (PyCFunction)PyIReg_uge,    METH_VARARGS, "Unsigned greater or equal"},
     {"ult_",         (PyCFunction)PyIReg_ult,    METH_VARARGS, "Unsigned less than"},
     {"ugt_",         (PyCFunction)PyIReg_ugt,    METH_VARARGS, "Unsigned greater than"},
-    {"min_",         (PyCFunction)PyIReg_min,    METH_VARARGS, "Minimum of two values"},
-    {"max_",         (PyCFunction)PyIReg_max,    METH_VARARGS, "Maximum of two values"},
+    {"min_",         (PyCFunction)Py_min,    METH_VARARGS, "Minimum of two values"},
+    {"max_",         (PyCFunction)Py_max,    METH_VARARGS, "Maximum of two values"},
     {"select_", (PyCFunction)PyIReg_select, METH_VARARGS, "Conditional select: cond ? true : false"},
     {"vbytes",  PyVbytes, METH_NOARGS, "Size of vector register in bytes."},
     {NULL, NULL, 0, NULL}};

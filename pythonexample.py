@@ -28,19 +28,9 @@ ptr = pyloops.IReg()
 a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr, a)
-meow = pyloops.IReg(3)
+one = pyloops.VReg(np.uint32, 1)
 
-val = pyloops.select_(pyloops.ugt_(meow, 1024), 10, 20)
-
-# pyloops.if_(pyloops.and_(val > 0, val < 10))
-# pyloops.store_(np.int32, ptr, val)
-# pyloops.endif_() 
-
-# pyloops.if_(pyloops.not_(ptr == 0))
-# val = pyloops.load_(np.int32, ptr)
-# pyloops.endif_()
-
-pyloops.return_(val)
+pyloops.return_(one)
 pyloops.end_func()
 
 func = pyloops.get_func("aaaa")
@@ -61,3 +51,10 @@ data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
 res = executable_func(data_ptr, 14)
 print(res)
+
+
+# cond1 = pyloops.and_(pyloops.and_(pyloops.and_(y >= x + 3, y <= 4), x >= -2), x <= 0)
+# cond2 = pyloops.and_(pyloops.and_(pyloops.and_(y <= x - 1, x >= 0), y <= 0), x*x + y*y <= 9)
+# out = pyloops.IReg(pyloops.or_(cond1, cond2))
+
+# out += pyloops.select_(s_cond, 2, 0)
