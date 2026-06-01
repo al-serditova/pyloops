@@ -27,10 +27,14 @@ import numpy as np
 ptr = pyloops.IReg()
 a = pyloops.IReg()
 
-pyloops.start_func("aaaa", ptr, a)
-one = pyloops.VReg(np.uint32, 1)
+pyloops.start_func("aaaa", ptr)
+v1 = pyloops.VReg(np.float32, 2)
+v2 = pyloops.VReg(np.float32, 3)
 
-pyloops.return_(one)
+res = pyloops.VReg(np.uint32, v1 < v2)
+
+pyloops.storevec(ptr, res)
+
 pyloops.end_func()
 
 func = pyloops.get_func("aaaa")
@@ -40,17 +44,16 @@ func.print_assembly()
 addr = func.ptr()
 executable_func = ctypes.CFUNCTYPE(
     ctypes.c_int64, 
-    ctypes.POINTER(ctypes.c_int32),
-    ctypes.c_int64
+    ctypes.POINTER(ctypes.c_uint32),
 )(addr)
 
-data = np.array([8, 2, -5, 7, 6], dtype = np.int32)
+data = np.array([8, 2, 1, 7, 6, 0, 0, 0], dtype = np.uint32)
 
 # Получаем указатель на данные массива
-data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
 
-res = executable_func(data_ptr, 14)
-print(res)
+executable_func(data_ptr)
+print(data)
 
 
 # cond1 = pyloops.and_(pyloops.and_(pyloops.and_(y >= x + 3, y <= 4), x >= -2), x <= 0)

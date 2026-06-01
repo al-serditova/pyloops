@@ -328,7 +328,7 @@ void PyVReg_dealloc(PyVReg *self)
 //     return PyVReg_inplace(self, other, OP_SHR);
 // }
 
-PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode) {
+PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode, bool maskedtypeout) {
     USE_CONTEXT_(ctx);
     Expr* expr;
     if (PyObject_TypeCheck(v, &PyVRegType) && PyObject_TypeCheck(w, &PyVRegType)) {
@@ -336,19 +336,39 @@ PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode) {
         loops::Expr right = ((PyVReg*)w)->getExpr();
         if(((PyVReg*)v)->type == ((PyVReg*)w)->type)
         {
-            switch (((PyVReg*)v)->type) {
-                case (TYPE_U8):   expr = new Expr(loops::VExpr<uint8_t> (opcode, {left, right}).notype()); break;
-                case (TYPE_I8):   expr = new Expr(loops::VExpr<int8_t>  (opcode, {left, right}).notype()); break;
-                case (TYPE_U16):  expr = new Expr(loops::VExpr<uint16_t>(opcode, {left, right}).notype()); break;
-                case (TYPE_I16):  expr = new Expr(loops::VExpr<int16_t> (opcode, {left, right}).notype()); break;
-                case (TYPE_U32):  expr = new Expr(loops::VExpr<uint32_t>(opcode, {left, right}).notype()); break;
-                case (TYPE_I32):  expr = new Expr(loops::VExpr<int32_t> (opcode, {left, right}).notype()); break;
-                case (TYPE_U64):  expr = new Expr(loops::VExpr<uint64_t>(opcode, {left, right}).notype()); break;
-                case (TYPE_I64):  expr = new Expr(loops::VExpr<int64_t> (opcode, {left, right}).notype()); break;
-                case (TYPE_FP16): expr = new Expr(loops::VExpr<f16_t>   (opcode, {left, right}).notype()); break;
-                case (TYPE_FP32): expr = new Expr(loops::VExpr<float>   (opcode, {left, right}).notype()); break;
-                case (TYPE_FP64): expr = new Expr(loops::VExpr<double>  (opcode, {left, right}).notype()); break;
-                default: Py_RETURN_NOTIMPLEMENTED;
+            if(maskedtypeout)
+            {
+                switch (((PyVReg*)v)->type) {
+                    case (TYPE_U8):   expr = new Expr(loops::VExpr<ElemTraits<uint8_t>::masktype> (opcode, {left, right}).notype()); break;
+                    case (TYPE_I8):   expr = new Expr(loops::VExpr<ElemTraits<int8_t>::masktype>  (opcode, {left, right}).notype()); break;
+                    case (TYPE_U16):  expr = new Expr(loops::VExpr<ElemTraits<uint16_t>::masktype>(opcode, {left, right}).notype()); break;
+                    case (TYPE_I16):  expr = new Expr(loops::VExpr<ElemTraits<int16_t>::masktype> (opcode, {left, right}).notype()); break;
+                    case (TYPE_U32):  expr = new Expr(loops::VExpr<ElemTraits<uint32_t>::masktype>(opcode, {left, right}).notype()); break;
+                    case (TYPE_I32):  expr = new Expr(loops::VExpr<ElemTraits<int32_t>::masktype> (opcode, {left, right}).notype()); break;
+                    case (TYPE_U64):  expr = new Expr(loops::VExpr<ElemTraits<uint64_t>::masktype>(opcode, {left, right}).notype()); break;
+                    case (TYPE_I64):  expr = new Expr(loops::VExpr<ElemTraits<int64_t>::masktype> (opcode, {left, right}).notype()); break;
+                    case (TYPE_FP16): expr = new Expr(loops::VExpr<ElemTraits<f16_t>::masktype>   (opcode, {left, right}).notype()); break;
+                    case (TYPE_FP32): expr = new Expr(loops::VExpr<ElemTraits<float>::masktype>   (opcode, {left, right}).notype()); break;
+                    case (TYPE_FP64): expr = new Expr(loops::VExpr<ElemTraits<double>::masktype>  (opcode, {left, right}).notype()); break;
+                    default: Py_RETURN_NOTIMPLEMENTED;
+                }
+            }
+            else
+            {
+                switch (((PyVReg*)v)->type) {
+                    case (TYPE_U8):   expr = new Expr(loops::VExpr<uint8_t> (opcode, {left, right}).notype()); break;
+                    case (TYPE_I8):   expr = new Expr(loops::VExpr<int8_t>  (opcode, {left, right}).notype()); break;
+                    case (TYPE_U16):  expr = new Expr(loops::VExpr<uint16_t>(opcode, {left, right}).notype()); break;
+                    case (TYPE_I16):  expr = new Expr(loops::VExpr<int16_t> (opcode, {left, right}).notype()); break;
+                    case (TYPE_U32):  expr = new Expr(loops::VExpr<uint32_t>(opcode, {left, right}).notype()); break;
+                    case (TYPE_I32):  expr = new Expr(loops::VExpr<int32_t> (opcode, {left, right}).notype()); break;
+                    case (TYPE_U64):  expr = new Expr(loops::VExpr<uint64_t>(opcode, {left, right}).notype()); break;
+                    case (TYPE_I64):  expr = new Expr(loops::VExpr<int64_t> (opcode, {left, right}).notype()); break;
+                    case (TYPE_FP16): expr = new Expr(loops::VExpr<f16_t>   (opcode, {left, right}).notype()); break;
+                    case (TYPE_FP32): expr = new Expr(loops::VExpr<float>   (opcode, {left, right}).notype()); break;
+                    case (TYPE_FP64): expr = new Expr(loops::VExpr<double>  (opcode, {left, right}).notype()); break;
+                    default: Py_RETURN_NOTIMPLEMENTED;
+                }                
             }
         } else {
             Py_RETURN_NOTIMPLEMENTED;
@@ -449,8 +469,7 @@ static PyNumberMethods PyVReg_as_number = {
     // .nb_rshift = (binaryfunc)PyVReg_rshift, 
     .nb_and = (binaryfunc)PyVReg_and,  
     .nb_xor = (binaryfunc)PyVReg_xor,        
-    .nb_or = (binaryfunc)PyVReg_or,   
-    .nb_true_divide = (binaryfunc)PyVReg_div,
+    .nb_or = (binaryfunc)PyVReg_or,
     // .nb_int = 0,     
     // .nb_float = 0,                       
     // .nb_inplace_add = (binaryfunc)PyVReg_iadd, 
@@ -463,6 +482,7 @@ static PyNumberMethods PyVReg_as_number = {
     // .nb_inplace_xor = (binaryfunc)PyVReg_ixor,
     // .nb_inplace_or = (binaryfunc)PyVReg_ior,
     // .nb_floor_divide = (binaryfunc)PyVReg_div,
+    .nb_true_divide = (binaryfunc)PyVReg_div,
     // .nb_inplace_floor_divide = (binaryfunc)PyVReg_idiv,
 };
 
@@ -514,70 +534,36 @@ static PyGetSetDef PyVReg_getset[] = {
     {NULL} // Конец таблицы
 };
 
-// static PyObject* PyVReg_RichCompare(PyObject* v, PyObject* w, int op)
-// {
-//     // v — это может быть PyVReg, а w — число, или наоборот.
-//     // Нам нужно извлечь VExpr из обоих.
-    
-//     USE_CONTEXT_(ctx);
-    
-//     loops::VExpr result_expr;
-//     if (PyObject_TypeCheck(v, &PyVRegType) && PyObject_TypeCheck(w, &PyVRegType))
-//     {
-//         loops::VExpr left = ((PyVReg*)v)->getExpr();
-//         loops::VExpr right = ((PyVReg*)w)->getExpr();
-//         switch (op)
-//         {
-//             case Py_LT: result_expr = (left < right);  break;
-//             case Py_LE: result_expr = (left <= right); break;
-//             case Py_EQ: result_expr = (left == right); break;
-//             case Py_NE: result_expr = (left != right); break;
-//             case Py_GT: result_expr = (left > right);  break;
-//             case Py_GE: result_expr = (left >= right); break;
-//             default: Py_RETURN_NOTIMPLEMENTED;
-//         }
-//     }
-//     else if (PyObject_TypeCheck(v, &PyVRegType) && PyLong_Check(w))
-//     {
-//         loops::VExpr left = ((PyVReg*)v)->getExpr();
-//         int64_t right = (int64_t)PyLong_AsLongLong(w);
-//         switch (op)
-//         {
-//             case Py_LT: result_expr = (left < right);  break;
-//             case Py_LE: result_expr = (left <= right); break;
-//             case Py_EQ: result_expr = (left == right); break;
-//             case Py_NE: result_expr = (left != right); break;
-//             case Py_GT: result_expr = (left > right);  break;
-//             case Py_GE: result_expr = (left >= right); break;
-//             default: Py_RETURN_NOTIMPLEMENTED;
-//         }
-//     }
-//     else if (PyLong_Check(v) && PyObject_TypeCheck(w, &PyVRegType))
-//     {
-//         int64_t  left = (int64_t)PyLong_AsLongLong(v);
-//         loops::VExpr right = ((PyVReg*)w)->getExpr();
-//         switch (op)
-//         {
-//             case Py_LT: result_expr = (left < right);  break;
-//             case Py_LE: result_expr = (left <= right); break;
-//             case Py_EQ: result_expr = (left == right); break;
-//             case Py_NE: result_expr = (left != right); break;
-//             case Py_GT: result_expr = (left > right);  break;
-//             case Py_GE: result_expr = (left >= right); break;
-//             default: Py_RETURN_NOTIMPLEMENTED;
-//         }
-//     }
-//     else
-//     {
-//         Py_RETURN_NOTIMPLEMENTED;
-//     }
+// Вспомогательная функция для определения типа беззнаковой маски
+static int get_mask_type(int source_type) {
+    switch (source_type) {
+        case TYPE_I8:  case TYPE_U8:   return TYPE_U8;
+        case TYPE_I16: case TYPE_U16:  case TYPE_FP16: return TYPE_U16;
+        case TYPE_I32: case TYPE_U32:  case TYPE_FP32: return TYPE_U32;
+        case TYPE_I64: case TYPE_U64:  case TYPE_FP64: return TYPE_U64;
+        default: return -1;
+    }
+}
 
-//     // Оборачиваем результат (VExpr) в новый PyVReg
-//     PyVReg* res_obj = PyObject_New(PyVReg, &PyVRegType);
-//     res_obj->reg = nullptr;
-//     res_obj->expr = new loops::VExpr(result_expr);
-//     return (PyObject*)res_obj;
-// }
+static PyObject* PyVReg_RichCompare(PyObject* v, PyObject* w, int op)
+{
+    USE_CONTEXT_(ctx);
+
+    // Сравнение векторов работает только если оба операнда — VReg
+    if (!PyObject_TypeCheck(v, &PyVRegType) || !PyObject_TypeCheck(w, &PyVRegType)) {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+    switch (op)
+    {
+        case Py_LT: return PyVReg_binary(v, w, VOP_LT, true);
+        case Py_LE: return PyVReg_binary(v, w, VOP_LE, true);
+        case Py_EQ: return PyVReg_binary(v, w, VOP_EQ, true);
+        case Py_NE: return PyVReg_binary(v, w, VOP_NE, true);
+        case Py_GT: return PyVReg_binary(v, w, VOP_GT, true);
+        case Py_GE: return PyVReg_binary(v, w, VOP_GE, true);
+        default: Py_RETURN_NOTIMPLEMENTED;
+    }
+}
 
 PyTypeObject PyVRegType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -588,7 +574,7 @@ PyTypeObject PyVRegType = {
     .tp_as_number = &PyVReg_as_number,
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_doc = "Loops Register",
-    // .tp_richcompare = (richcmpfunc)PyVReg_RichCompare,
+    .tp_richcompare = PyVReg_RichCompare,
     .tp_getset = PyVReg_getset,
     .tp_init = (initproc)PyVReg_init,
     .tp_new = PyVReg_new,
