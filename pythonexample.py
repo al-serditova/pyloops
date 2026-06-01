@@ -28,10 +28,8 @@ ptr = pyloops.IReg()
 a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr)
-v1 = pyloops.VReg(np.float32, 2)
-v2 = pyloops.VReg(np.float32, 3)
-
-res = pyloops.VReg(np.uint32, v1 < v2)
+meow = pyloops.VReg(np.int32, -256)
+res = pyloops.VReg(np.int32, pyloops.ushift_right(meow, 4)) # meow >> 4 )#
 
 pyloops.storevec(ptr, res)
 

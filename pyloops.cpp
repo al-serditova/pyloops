@@ -510,12 +510,16 @@ static PyObject* PyLoops_not(PyObject* self, PyObject* arg) {
     return (PyObject*)py_res;
 }
 
-PyObject* PyIReg_ushift_right(PyObject* self, PyObject* args) {
+PyObject* Py_ushift_right(PyObject* self, PyObject* args) {
     PyObject *v, *w;
-    // v - что сдвигаем, w - на сколько
+    // v - что сдвигаем, w - на сколько битов
     if (!PyArg_ParseTuple(args, "OO", &v, &w)) {
         return NULL;
     }
+    if (PyObject_TypeCheck(v, &PyVRegType)) {
+        return PyVReg_binary(v, w, VOP_SHR);
+    }
+   
     return PyIReg_binary(v, w, OP_SHR);
 }
 
@@ -647,7 +651,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"and_", (PyCFunction)PyLoops_and, METH_VARARGS, "Logical AND"},
     {"or_",  (PyCFunction)PyLoops_or,  METH_VARARGS, "Logical OR"},
     {"not_", (PyCFunction)PyLoops_not, METH_O,       "Logical NOT"},
-    {"ushift_right", (PyCFunction)PyIReg_ushift_right, METH_VARARGS, "Logical shift right (unsigned)"},
+    {"ushift_right", (PyCFunction)Py_ushift_right, METH_VARARGS, "Logical shift right (unsigned)"},
     {"ule_",         (PyCFunction)PyIReg_ule,    METH_VARARGS, "Unsigned less or equal"},
     {"uge_",         (PyCFunction)PyIReg_uge,    METH_VARARGS, "Unsigned greater or equal"},
     {"ult_",         (PyCFunction)PyIReg_ult,    METH_VARARGS, "Unsigned less than"},

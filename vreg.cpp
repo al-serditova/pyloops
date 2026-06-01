@@ -331,50 +331,55 @@ void PyVReg_dealloc(PyVReg *self)
 PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode, bool maskedtypeout) {
     USE_CONTEXT_(ctx);
     Expr* expr;
+    loops::Expr left;
+    loops::Expr right;
     if (PyObject_TypeCheck(v, &PyVRegType) && PyObject_TypeCheck(w, &PyVRegType)) {
-        loops::Expr left = ((PyVReg*)v)->getExpr();
-        loops::Expr right = ((PyVReg*)w)->getExpr();
-        if(((PyVReg*)v)->type == ((PyVReg*)w)->type)
-        {
-            if(maskedtypeout)
-            {
-                switch (((PyVReg*)v)->type) {
-                    case (TYPE_U8):   expr = new Expr(loops::VExpr<ElemTraits<uint8_t>::masktype> (opcode, {left, right}).notype()); break;
-                    case (TYPE_I8):   expr = new Expr(loops::VExpr<ElemTraits<int8_t>::masktype>  (opcode, {left, right}).notype()); break;
-                    case (TYPE_U16):  expr = new Expr(loops::VExpr<ElemTraits<uint16_t>::masktype>(opcode, {left, right}).notype()); break;
-                    case (TYPE_I16):  expr = new Expr(loops::VExpr<ElemTraits<int16_t>::masktype> (opcode, {left, right}).notype()); break;
-                    case (TYPE_U32):  expr = new Expr(loops::VExpr<ElemTraits<uint32_t>::masktype>(opcode, {left, right}).notype()); break;
-                    case (TYPE_I32):  expr = new Expr(loops::VExpr<ElemTraits<int32_t>::masktype> (opcode, {left, right}).notype()); break;
-                    case (TYPE_U64):  expr = new Expr(loops::VExpr<ElemTraits<uint64_t>::masktype>(opcode, {left, right}).notype()); break;
-                    case (TYPE_I64):  expr = new Expr(loops::VExpr<ElemTraits<int64_t>::masktype> (opcode, {left, right}).notype()); break;
-                    case (TYPE_FP16): expr = new Expr(loops::VExpr<ElemTraits<f16_t>::masktype>   (opcode, {left, right}).notype()); break;
-                    case (TYPE_FP32): expr = new Expr(loops::VExpr<ElemTraits<float>::masktype>   (opcode, {left, right}).notype()); break;
-                    case (TYPE_FP64): expr = new Expr(loops::VExpr<ElemTraits<double>::masktype>  (opcode, {left, right}).notype()); break;
-                    default: Py_RETURN_NOTIMPLEMENTED;
-                }
-            }
-            else
-            {
-                switch (((PyVReg*)v)->type) {
-                    case (TYPE_U8):   expr = new Expr(loops::VExpr<uint8_t> (opcode, {left, right}).notype()); break;
-                    case (TYPE_I8):   expr = new Expr(loops::VExpr<int8_t>  (opcode, {left, right}).notype()); break;
-                    case (TYPE_U16):  expr = new Expr(loops::VExpr<uint16_t>(opcode, {left, right}).notype()); break;
-                    case (TYPE_I16):  expr = new Expr(loops::VExpr<int16_t> (opcode, {left, right}).notype()); break;
-                    case (TYPE_U32):  expr = new Expr(loops::VExpr<uint32_t>(opcode, {left, right}).notype()); break;
-                    case (TYPE_I32):  expr = new Expr(loops::VExpr<int32_t> (opcode, {left, right}).notype()); break;
-                    case (TYPE_U64):  expr = new Expr(loops::VExpr<uint64_t>(opcode, {left, right}).notype()); break;
-                    case (TYPE_I64):  expr = new Expr(loops::VExpr<int64_t> (opcode, {left, right}).notype()); break;
-                    case (TYPE_FP16): expr = new Expr(loops::VExpr<f16_t>   (opcode, {left, right}).notype()); break;
-                    case (TYPE_FP32): expr = new Expr(loops::VExpr<float>   (opcode, {left, right}).notype()); break;
-                    case (TYPE_FP64): expr = new Expr(loops::VExpr<double>  (opcode, {left, right}).notype()); break;
-                    default: Py_RETURN_NOTIMPLEMENTED;
-                }                
-            }
-        } else {
+        left = ((PyVReg*)v)->getExpr();
+        right = ((PyVReg*)w)->getExpr();
+        if(((PyVReg*)v)->type != ((PyVReg*)w)->type)
             Py_RETURN_NOTIMPLEMENTED;
-        }
-    } else {
+    }
+    else if(PyObject_TypeCheck(v, &PyVRegType) && PyLong_Check(w)) {
+        left = ((PyVReg*)v)->getExpr();
+        int64_t val = (int64_t)PyLong_AsLongLong(w);
+        right = Expr(val);
+    }
+    else 
         Py_RETURN_NOTIMPLEMENTED;
+
+    if(maskedtypeout)
+    {
+        switch (((PyVReg*)v)->type) {
+            case (TYPE_U8):   expr = new Expr(loops::VExpr<ElemTraits<uint8_t>::masktype> (opcode, {left, right}).notype()); break;
+            case (TYPE_I8):   expr = new Expr(loops::VExpr<ElemTraits<int8_t>::masktype>  (opcode, {left, right}).notype()); break;
+            case (TYPE_U16):  expr = new Expr(loops::VExpr<ElemTraits<uint16_t>::masktype>(opcode, {left, right}).notype()); break;
+            case (TYPE_I16):  expr = new Expr(loops::VExpr<ElemTraits<int16_t>::masktype> (opcode, {left, right}).notype()); break;
+            case (TYPE_U32):  expr = new Expr(loops::VExpr<ElemTraits<uint32_t>::masktype>(opcode, {left, right}).notype()); break;
+            case (TYPE_I32):  expr = new Expr(loops::VExpr<ElemTraits<int32_t>::masktype> (opcode, {left, right}).notype()); break;
+            case (TYPE_U64):  expr = new Expr(loops::VExpr<ElemTraits<uint64_t>::masktype>(opcode, {left, right}).notype()); break;
+            case (TYPE_I64):  expr = new Expr(loops::VExpr<ElemTraits<int64_t>::masktype> (opcode, {left, right}).notype()); break;
+            case (TYPE_FP16): expr = new Expr(loops::VExpr<ElemTraits<f16_t>::masktype>   (opcode, {left, right}).notype()); break;
+            case (TYPE_FP32): expr = new Expr(loops::VExpr<ElemTraits<float>::masktype>   (opcode, {left, right}).notype()); break;
+            case (TYPE_FP64): expr = new Expr(loops::VExpr<ElemTraits<double>::masktype>  (opcode, {left, right}).notype()); break;
+            default: Py_RETURN_NOTIMPLEMENTED;
+        }
+    }
+    else
+    {
+        switch (((PyVReg*)v)->type) {
+            case (TYPE_U8):   expr = new Expr(loops::VExpr<uint8_t> (opcode, {left, right}).notype()); break;
+            case (TYPE_I8):   expr = new Expr(loops::VExpr<int8_t>  (opcode, {left, right}).notype()); break;
+            case (TYPE_U16):  expr = new Expr(loops::VExpr<uint16_t>(opcode, {left, right}).notype()); break;
+            case (TYPE_I16):  expr = new Expr(loops::VExpr<int16_t> (opcode, {left, right}).notype()); break;
+            case (TYPE_U32):  expr = new Expr(loops::VExpr<uint32_t>(opcode, {left, right}).notype()); break;
+            case (TYPE_I32):  expr = new Expr(loops::VExpr<int32_t> (opcode, {left, right}).notype()); break;
+            case (TYPE_U64):  expr = new Expr(loops::VExpr<uint64_t>(opcode, {left, right}).notype()); break;
+            case (TYPE_I64):  expr = new Expr(loops::VExpr<int64_t> (opcode, {left, right}).notype()); break;
+            case (TYPE_FP16): expr = new Expr(loops::VExpr<f16_t>   (opcode, {left, right}).notype()); break;
+            case (TYPE_FP32): expr = new Expr(loops::VExpr<float>   (opcode, {left, right}).notype()); break;
+            case (TYPE_FP64): expr = new Expr(loops::VExpr<double>  (opcode, {left, right}).notype()); break;
+            default: Py_RETURN_NOTIMPLEMENTED;
+        }                
     }
     // Оборачиваем итог в новый объект PyVReg
     PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
@@ -393,11 +398,8 @@ static PyObject* PyVReg_and(PyObject* v, PyObject* w) { return PyVReg_binary(v, 
 static PyObject* PyVReg_or(PyObject* v, PyObject* w)  { return PyVReg_binary(v, w, VOP_OR); }
 static PyObject* PyVReg_xor(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_XOR); }
 
-// static PyObject* PyVReg_lshift(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_SHL); } // Логический влево
-// static PyObject* PyVReg_rshift_logical(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_SHR); } // Логический вправо
-// static PyObject* PyVReg_rshift(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_SAR); } // Арифметический вправо (сохраняет знак)
-
-
+static PyObject* PyVReg_lshift(PyObject* self, PyObject* args) { return PyVReg_binary(self, args, VOP_SAL); }
+static PyObject* PyVReg_rshift(PyObject* self, PyObject* args) { return PyVReg_binary(self, args, VOP_SAR); }
 
 // static PyObject* PyVReg_unary(PyObject* v, int type) {
 //     if (!PyObject_TypeCheck(v, &PyVRegType)) {
@@ -465,8 +467,8 @@ static PyNumberMethods PyVReg_as_number = {
     .nb_add = (binaryfunc)PyVReg_add,
     .nb_subtract = (binaryfunc)PyVReg_sub,
     .nb_multiply = (binaryfunc)PyVReg_mul,
-    // .nb_lshift = (binaryfunc)PyVReg_lshift,      
-    // .nb_rshift = (binaryfunc)PyVReg_rshift, 
+    .nb_lshift = (binaryfunc)PyVReg_lshift,
+    .nb_rshift = (binaryfunc)PyVReg_rshift,
     .nb_and = (binaryfunc)PyVReg_and,  
     .nb_xor = (binaryfunc)PyVReg_xor,        
     .nb_or = (binaryfunc)PyVReg_or,
