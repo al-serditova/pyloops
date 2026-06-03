@@ -225,100 +225,117 @@ void PyVReg_dealloc(PyVReg *self)
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-// static PyObject* PyVReg_inplace(PyObject* self, PyObject* other, int type) {
-//     PyVReg* a = (PyVReg*)self;
+static PyObject* PyVReg_inplace_shift(PyObject* self, PyObject* other, int opcode) {
+    if (!PyLong_Check(other)) {
+        PyErr_SetString(PyExc_TypeError, "Inplace shift requires an integer constant");
+        return NULL;
+    }
 
-//     // 1. Проверка инициализации целевого регистра
-//     if (!a->initialized()) {
-//         PyErr_SetString(PyExc_RuntimeError, "Target register is uninitialized");
-//         return NULL;
-//     }
+    PyVReg* a = (PyVReg*)self;
 
-//     // 2. Логика выбора операнда 
-//     if (PyObject_TypeCheck(other, &PyVRegType)) {
-//         // Сценарий: VReg += VReg
-//         PyVReg* b = (PyVReg*)other;
-//         if (b->initialized()) {
-//             switch (type)
-//             {
-//             case OP_ADD: *(a->reg) += b->getExpr(); break;
-//             case OP_SUB: *(a->reg) -= b->getExpr(); break;
-//             case OP_MUL: *(a->reg) *= b->getExpr(); break;
-//             case OP_DIV: *(a->reg) /= b->getExpr(); break;
-//             case OP_MOD: *(a->reg) %= b->getExpr(); break;
-//             case OP_AND: *(a->reg) &= b->getExpr(); break;
-//             case OP_OR:  *(a->reg) |= b->getExpr(); break;
-//             case OP_XOR: *(a->reg) ^= b->getExpr(); break;
-//             case OP_SHL: *(a->reg) <<= b->getExpr(); break;
-//             case OP_SHR: *(a->reg) >>= b->getExpr(); break;
-//             default: break;
-//             }
-//         } else {
-//             PyErr_SetString(PyExc_RuntimeError, "Source register is uninitialized");
-//             return NULL;
-//         }
-//     }
-//     else if (PyLong_Check(other)) {
-//         // Сценарий: VReg += int64_t
-//         int64_t val = (int64_t)PyLong_AsLongLong(other);
-//         if (val == -1 && PyErr_Occurred()) {
-//             return NULL;
-//         }
-//         switch (type)
-//         {
-//         case OP_ADD: *(a->reg) += val; break;
-//         case OP_SUB: *(a->reg) -= val; break;
-//         case OP_MUL: *(a->reg) *= val; break;
-//         case OP_DIV: *(a->reg) /= val; break;
-//         case OP_MOD: *(a->reg) %= val; break;
-//         case OP_AND: *(a->reg) &= val; break;
-//         case OP_OR:  *(a->reg) |= val; break;
-//         case OP_XOR: *(a->reg) ^= val; break;
-//         case OP_SHL: *(a->reg) <<= val; break;
-//         case OP_SHR: *(a->reg) >>= val; break;
-//         default: break;
-//         }
-//     }
-//     else {
-//         Py_RETURN_NOTIMPLEMENTED;
-//     }
+    if (!PyObject_TypeCheck(other, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Inplace operation requires a VReg object");
+        return NULL;
+    }
 
-//     // 3. Возвращаем self с увеличенным счетчиком
-//     Py_INCREF(self);
-//     return (PyObject*)self;
-// }
+    if (!a->initialized() || !a->reg) {
+        PyErr_SetString(PyExc_RuntimeError, "Target VReg is uninitialized");
+        return NULL;
+    }
 
-// static PyObject* PyVReg_iadd(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_ADD);
-// }
+    int64_t val = (int64_t)PyLong_AsLongLong(other);
 
-// static PyObject* PyVReg_isub(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_SUB);
-// }
+    Expr left = a->getExpr();
+    Expr right = Expr(val);
 
-// static PyObject* PyVReg_imul(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_MUL);
-// }
+    // Генерируем VExpr нужного типа и делаем присваивание в бэкенд-регистр loops
+    switch (a->type) {
+        case (TYPE_U8):   getVReg<uint8_t>(a->reg)  = VExpr<uint8_t> (opcode, {left, right}); break;
+        case (TYPE_I8):   getVReg<int8_t>(a->reg)   = VExpr<int8_t>  (opcode, {left, right}); break;
+        case (TYPE_U16):  getVReg<uint16_t>(a->reg) = VExpr<uint16_t>(opcode, {left, right}); break;
+        case (TYPE_I16):  getVReg<int16_t>(a->reg)  = VExpr<int16_t> (opcode, {left, right}); break;
+        case (TYPE_U32):  getVReg<uint32_t>(a->reg) = VExpr<uint32_t>(opcode, {left, right}); break;
+        case (TYPE_I32):  getVReg<int32_t>(a->reg)  = VExpr<int32_t> (opcode, {left, right}); break;
+        case (TYPE_U64):  getVReg<uint64_t>(a->reg) = VExpr<uint64_t>(opcode, {left, right}); break;
+        case (TYPE_I64):  getVReg<int64_t>(a->reg)  = VExpr<int64_t> (opcode, {left, right}); break;
+        case (TYPE_FP16): getVReg<f16_t>(a->reg)    = VExpr<f16_t>   (opcode, {left, right}); break;
+        case (TYPE_FP32): getVReg<float>(a->reg)    = VExpr<float>   (opcode, {left, right}); break;
+        case (TYPE_FP64): getVReg<double>(a->reg)   = VExpr<double>  (opcode, {left, right}); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
 
-// static PyObject* PyVReg_idiv(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_DIV);
-// }
+    Py_INCREF(self);
+    return (PyObject*)self;
+}
 
-// static PyObject* PyVReg_imod(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_MOD);
-// }
+static PyObject* PyVReg_inplace(PyObject* self, PyObject* other, int opcode, bool longarg = false) {
+    PyVReg* a = (PyVReg*)self;
 
-// static PyObject* PyVReg_iand(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_AND);
+    if (!longarg && !PyObject_TypeCheck(other, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "Inplace operation requires a VReg object");
+        return NULL;
+    }
 
-// }
-// static PyObject* PyVReg_ior(PyObject* self, PyObject* other)  {
-//     return PyVReg_inplace(self, other, OP_OR);
-// }
+    if (longarg && !PyLong_Check(other)) {
+        PyErr_SetString(PyExc_TypeError, "Inplace shift requires an integer constant");
+        return NULL;
+    }
 
-// static PyObject* PyVReg_ixor(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_XOR);
-// }
+    if (!a->initialized() || !a->reg) {
+        PyErr_SetString(PyExc_RuntimeError, "Target VReg is uninitialized");
+        return NULL;
+    }
+    
+    loops::Expr left = a->getExpr();
+    loops::Expr right;
+
+    if(longarg)
+    {
+        int64_t val = (int64_t)PyLong_AsLongLong(other);
+        right = Expr(val);
+    }
+    else
+    {
+        PyVReg* b = (PyVReg*)other;
+        if (a->type != b->type) {
+            PyErr_SetString(PyExc_TypeError, "VReg types must match for inplace operations");
+            return NULL;
+        }
+        right = b->getExpr();        
+    }
+
+    // Генерируем VExpr нужного типа и делаем присваивание в бэкенд-регистр loops
+    switch (a->type) {
+        case (TYPE_U8):   getVReg<uint8_t>(a->reg)  = loops::VExpr<uint8_t> (opcode, {left, right}); break;
+        case (TYPE_I8):   getVReg<int8_t>(a->reg)   = loops::VExpr<int8_t>  (opcode, {left, right}); break;
+        case (TYPE_U16):  getVReg<uint16_t>(a->reg) = loops::VExpr<uint16_t>(opcode, {left, right}); break;
+        case (TYPE_I16):  getVReg<int16_t>(a->reg)  = loops::VExpr<int16_t> (opcode, {left, right}); break;
+        case (TYPE_U32):  getVReg<uint32_t>(a->reg) = loops::VExpr<uint32_t>(opcode, {left, right}); break;
+        case (TYPE_I32):  getVReg<int32_t>(a->reg)  = loops::VExpr<int32_t> (opcode, {left, right}); break;
+        case (TYPE_U64):  getVReg<uint64_t>(a->reg) = loops::VExpr<uint64_t>(opcode, {left, right}); break;
+        case (TYPE_I64):  getVReg<int64_t>(a->reg)  = loops::VExpr<int64_t> (opcode, {left, right}); break;
+        case (TYPE_FP16): getVReg<loops::f16_t>(a->reg) = loops::VExpr<loops::f16_t>(opcode, {left, right}); break;
+        case (TYPE_FP32): getVReg<float>(a->reg)    = loops::VExpr<float>   (opcode, {left, right}); break;
+        case (TYPE_FP64): getVReg<double>(a->reg)   = loops::VExpr<double>  (opcode, {left, right}); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    Py_INCREF(self);
+    return (PyObject*)self;
+}
+
+static PyObject* PyVReg_iadd(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_ADD); }
+static PyObject* PyVReg_isub(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_SUB); }
+static PyObject* PyVReg_imul(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_MUL); }
+static PyObject* PyVReg_idiv(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_DIV); }
+static PyObject* PyVReg_iand(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_AND); }
+static PyObject* PyVReg_ior (PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_OR);  }
+static PyObject* PyVReg_ixor(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_XOR); }
+static PyObject* PyVReg_ilshift(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_SAL, true); }
+static PyObject* PyVReg_irshift(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_SAR, true); }
+
 
 // static PyObject* PyVReg_ilshift(PyObject* self, PyObject* other) {
 //     return PyVReg_inplace(self, other, OP_SHL);

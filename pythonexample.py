@@ -29,10 +29,10 @@ a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr)
 # v1 = pyloops.loadVec(np.int32, ptr)
-res = pyloops.VReg(np.int32, 2)
-v2 = pyloops.loadVec(np.int32, ptr, 0)
-
-pyloops.storevec(ptr, v2 > res)
+loaded = pyloops.loadVec(np.int32, ptr, 0)
+v2 = pyloops.VReg(np.int32, 2)
+loaded += v2
+pyloops.storevec(ptr, loaded)
 
 pyloops.end_func()
 
