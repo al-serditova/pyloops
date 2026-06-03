@@ -170,6 +170,107 @@ static PyObject* PyLoad(PyObject* self, PyObject* args) {
     }
 }
 
+static PyObject* PyLoadVec(PyObject* self, PyObject* args) {
+    USE_CONTEXT_(ctx);
+    PyObject *obj_type = nullptr;
+    PyObject *obj_base = nullptr;
+    PyObject *obj_offset = nullptr;
+
+    // loadVec(type, ptr, [offset])
+    if (!PyArg_ParseTuple(args, "OO|O", &obj_type, &obj_base, &obj_offset)) {
+        return NULL;
+    }
+    // Переводим питоновский numpy-тип в наш внутренний enum
+    int t = type_from_numpy(obj_type);
+    if(t == -1)
+        return NULL;
+
+    // База должна быть строго скалярным IReg
+    if (!PyObject_TypeCheck(obj_base, &PyIRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: loadVec: Pointer must be an IReg");
+        return NULL;
+    }
+    loops::IExpr base_expr = ((PyIReg*)obj_base)->getExpr();
+
+
+    loops::Expr* result_expr = nullptr;
+    try {
+        // Сценарий 1: loadVec(type, base) -> Без смещения
+        if (obj_offset == nullptr || obj_offset == Py_None) {
+            switch (t) {
+                case (TYPE_I8):   result_expr = new loops::Expr(loops::loadvec<int8_t>(base_expr).notype()); break;
+                case (TYPE_U8):   result_expr = new loops::Expr(loops::loadvec<uint8_t>(base_expr).notype()); break;
+                case (TYPE_I16):  result_expr = new loops::Expr(loops::loadvec<int16_t>(base_expr).notype()); break;
+                case (TYPE_U16):  result_expr = new loops::Expr(loops::loadvec<uint16_t>(base_expr).notype()); break;
+                case (TYPE_I32):  result_expr = new loops::Expr(loops::loadvec<int32_t>(base_expr).notype()); break;
+                case (TYPE_U32):  result_expr = new loops::Expr(loops::loadvec<uint32_t>(base_expr).notype()); break;
+                case (TYPE_I64):  result_expr = new loops::Expr(loops::loadvec<int64_t>(base_expr).notype()); break;
+                case (TYPE_U64):  result_expr = new loops::Expr(loops::loadvec<uint64_t>(base_expr).notype()); break;
+                case (TYPE_FP16): result_expr = new loops::Expr(loops::loadvec<loops::f16_t>(base_expr).notype()); break;
+                case (TYPE_FP32): result_expr = new loops::Expr(loops::loadvec<float>(base_expr).notype()); break;
+                case (TYPE_FP64): result_expr = new loops::Expr(loops::loadvec<double>(base_expr).notype()); break;
+                default: break;
+            }
+        }
+        // Сценарий 2: loadVec(type, base, offset) -> Смещение в IReg
+        else if (PyObject_TypeCheck(obj_offset, &PyIRegType)) {
+            loops::IExpr offset_expr = ((PyIReg*)obj_offset)->getExpr();
+            switch (t) {
+                case (TYPE_I8):   result_expr = new loops::Expr(loops::loadvec<int8_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_U8):   result_expr = new loops::Expr(loops::loadvec<uint8_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_I16):  result_expr = new loops::Expr(loops::loadvec<int16_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_U16):  result_expr = new loops::Expr(loops::loadvec<uint16_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_I32):  result_expr = new loops::Expr(loops::loadvec<int32_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_U32):  result_expr = new loops::Expr(loops::loadvec<uint32_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_I64):  result_expr = new loops::Expr(loops::loadvec<int64_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_U64):  result_expr = new loops::Expr(loops::loadvec<uint64_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_FP16): result_expr = new loops::Expr(loops::loadvec<loops::f16_t>(base_expr, offset_expr).notype()); break;
+                case (TYPE_FP32): result_expr = new loops::Expr(loops::loadvec<float>(base_expr, offset_expr).notype()); break;
+                case (TYPE_FP64): result_expr = new loops::Expr(loops::loadvec<double>(base_expr, offset_expr).notype()); break;
+                default: break;
+            }
+        }
+        // Сценарий 3: loadVec(type, base, offset) -> Смещение в виде обычного числа (int)
+        else if (PyLong_Check(obj_offset)) {
+            int64_t offset_val = PyLong_AsLongLong(obj_offset);
+            switch (t) {
+                case (TYPE_I8):   result_expr = new loops::Expr(loops::loadvec<int8_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_U8):   result_expr = new loops::Expr(loops::loadvec<uint8_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_I16):  result_expr = new loops::Expr(loops::loadvec<int16_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_U16):  result_expr = new loops::Expr(loops::loadvec<uint16_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_I32):  result_expr = new loops::Expr(loops::loadvec<int32_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_U32):  result_expr = new loops::Expr(loops::loadvec<uint32_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_I64):  result_expr = new loops::Expr(loops::loadvec<int64_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_U64):  result_expr = new loops::Expr(loops::loadvec<uint64_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_FP16): result_expr = new loops::Expr(loops::loadvec<loops::f16_t>(base_expr, offset_val).notype()); break;
+                case (TYPE_FP32): result_expr = new loops::Expr(loops::loadvec<float>(base_expr, offset_val).notype()); break;
+                case (TYPE_FP64): result_expr = new loops::Expr(loops::loadvec<double>(base_expr, offset_val).notype()); break;
+                default: break;
+            }
+        }
+        else {
+            PyErr_SetString(PyExc_TypeError, "PyLoops: loadVec: Offset must be an IReg or an integer");
+            return NULL;
+        }
+    } catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    // Создаем результирующий векторный регистр для Python
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->expr = result_expr;
+    py_res->type = t; // Присваиваем тип элемента вектору
+
+    return (PyObject*)py_res;
+
+type_error:
+    PyErr_SetString(PyExc_TypeError, "PyLoops: loadVec: Unsupported data type");
+    return NULL;
+}
+
 static PyObject* PyStore(PyObject* self, PyObject* args) {
     PyObject *obj_type = nullptr;
     PyObject *obj_base = nullptr;
@@ -637,6 +738,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
     {"get_func", PyGetFunc, METH_VARARGS, "Returns a Func object by name"},
     {"load_", (PyCFunction)PyLoad, METH_VARARGS, "Load value from memory with given numpy type"},
+    {"loadVec",  (PyCFunction)PyLoadVec,  METH_VARARGS, "Load vector from memory (base, [offset])"},
     {"store_",  (PyCFunction)PyStore,  METH_VARARGS, "Store value to memory with given numpy type"},
     {"storevec",  (PyCFunction)PyStoreVec,  METH_VARARGS, "Store vector register to memory"},
     {"if_",       (PyCFunction)PyIf,       METH_O,      "Start an if block"},

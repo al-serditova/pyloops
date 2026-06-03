@@ -346,9 +346,22 @@ PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode, bool maskedtypeout
     }
     else 
         Py_RETURN_NOTIMPLEMENTED;
-
+    int outtype = ((PyVReg*)w)->type;
     if(maskedtypeout)
     {
+        outtype = outtype == TYPE_U8 ? TYPE_U8 :
+                  outtype == TYPE_I8 ? TYPE_U8 :
+                  outtype == TYPE_U16 ? TYPE_U16 :
+                  outtype == TYPE_I16 ? TYPE_U16 :
+                  outtype == TYPE_U32 ? TYPE_U32 :
+                  outtype == TYPE_I32 ? TYPE_U32 :
+                  outtype == TYPE_U64 ? TYPE_U64 :
+                  outtype == TYPE_I64 ? TYPE_U64 :
+                  outtype == TYPE_FP16 ? TYPE_U16 :
+                  outtype == TYPE_FP32 ? TYPE_U32 :
+                  outtype == TYPE_FP64 ? TYPE_U64 : -1;
+        if(outtype == -1)
+            Py_RETURN_NOTIMPLEMENTED;
         switch (((PyVReg*)v)->type) {
             case (TYPE_U8):   expr = new Expr(loops::VExpr<ElemTraits<uint8_t>::masktype> (opcode, {left, right}).notype()); break;
             case (TYPE_I8):   expr = new Expr(loops::VExpr<ElemTraits<int8_t>::masktype>  (opcode, {left, right}).notype()); break;
@@ -385,6 +398,7 @@ PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode, bool maskedtypeout
     PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
     if (!py_res) return NULL;
     py_res->reg = nullptr;
+    py_res->type = outtype;
     py_res->expr = expr;
     return (PyObject*)py_res;
 }

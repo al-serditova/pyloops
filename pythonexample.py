@@ -28,10 +28,11 @@ ptr = pyloops.IReg()
 a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr)
-meow = pyloops.VReg(np.int32, -256)
-res = pyloops.VReg(np.int32, pyloops.ushift_right(meow, 4)) # meow >> 4 )#
+# v1 = pyloops.loadVec(np.int32, ptr)
+res = pyloops.VReg(np.int32, 2)
+v2 = pyloops.loadVec(np.int32, ptr, 0)
 
-pyloops.storevec(ptr, res)
+pyloops.storevec(ptr, v2 > res)
 
 pyloops.end_func()
 
@@ -42,13 +43,12 @@ func.print_assembly()
 addr = func.ptr()
 executable_func = ctypes.CFUNCTYPE(
     ctypes.c_int64, 
-    ctypes.POINTER(ctypes.c_uint32),
+    ctypes.POINTER(ctypes.c_int32),
 )(addr)
 
-data = np.array([8, 2, 1, 7, 6, 0, 0, 0], dtype = np.uint32)
-
+data = np.array([8, 2, -5, 7, 6, -2, 1, 8, 3, 6, 7, 1, -7, 0, 9, 10], dtype = np.int32)
 # Получаем указатель на данные массива
-data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
+data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
 
 executable_func(data_ptr)
 print(data)
