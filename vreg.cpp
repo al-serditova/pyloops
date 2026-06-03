@@ -465,39 +465,60 @@ static PyObject* PyVReg_rshift(PyObject* self, PyObject* args) { return PyVReg_b
 // static PyObject* PyVReg_abs(PyObject* v)      { return PyVReg_unary(v, OP_ABS); }
 // static PyObject* PyVReg_invert(PyObject* v)   { return PyVReg_unary(v, OP_NOT); }
 
-// static PyObject* PyVReg_pow(PyObject* v, PyObject* w, PyObject* z) {
-//     // 1. Проверяем, что первый аргумент - наш VReg
-//     if (!PyObject_TypeCheck(v, &PyVRegType)) {
-//         Py_RETURN_NOTIMPLEMENTED;
-//     }
+static PyObject* PyVReg_pow(PyObject* v, PyObject* w, PyObject* z) {
+    // 1. Проверяем, что первый аргумент — наш векторный VReg
+    if (!PyObject_TypeCheck(v, &PyVRegType)) {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
 
-//     // 2. Проверяем, что степень (второй аргумент) - это целое число
-//     if (!PyLong_Check(w)) {
-//         PyErr_SetString(PyExc_TypeError, "Exponent must be an integer constant");
-//         return NULL;
-//     }
+    // 2. Проверяем, что степень (второй аргумент) — это целое число (константа)
+    if (!PyLong_Check(w)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: pow: Exponent must be an integer constant");
+        return NULL;
+    }
 
-//     int p = (int)PyLong_AsLong(w);
-//     USE_CONTEXT_(ctx); // Твой макрос для контекста
+    int p = (int)PyLong_AsLong(w);
+    int res_type = ((PyVReg*)v)->type;
 
-//     // Достаем VExpr из объекта v
-//     loops::VExpr base = ((PyVReg*)v)->getExpr();
-    
-//     // Вызываем ту самую функцию из loops напрямую!
-//     loops::VExpr result_expr = loops::pow(base, p);
+    USE_CONTEXT_(ctx);
 
-//     // Оборачиваем результат в новый PyVReg
-//     PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
-//     if (!py_res) return NULL;
-//     py_res->reg = nullptr;
-//     py_res->expr = new loops::VExpr(result_expr);
-//     return (PyObject*)py_res;
-// }
+    // Достаем базовое выражение Expr из объекта v
+    Expr base_expr = ((PyVReg*)v)->getExpr();
+    Expr* result_expr = nullptr;
+
+    // 3. Вызываем loops::pow для конкретного типа вектора, оборачивая в VExpr<T>
+    // и обязательно сбрасываем тип через .notype() в конце.
+    switch (res_type) {
+        case (TYPE_I8):   result_expr = new Expr(loops::pow(restoreExprType<int8_t>(base_expr), p).notype()); break;
+        case (TYPE_U8):   result_expr = new Expr(loops::pow(restoreExprType<uint8_t>(base_expr), p).notype()); break;
+        case (TYPE_I16):  result_expr = new Expr(loops::pow(restoreExprType<int16_t>(base_expr), p).notype()); break;
+        case (TYPE_U16):  result_expr = new Expr(loops::pow(restoreExprType<uint16_t>(base_expr), p).notype()); break;
+        case (TYPE_I32):  result_expr = new Expr(loops::pow(restoreExprType<int32_t>(base_expr), p).notype()); break;
+        case (TYPE_U32):  result_expr = new Expr(loops::pow(restoreExprType<uint32_t>(base_expr), p).notype()); break;
+        case (TYPE_I64):  result_expr = new Expr(loops::pow(restoreExprType<int64_t>(base_expr), p).notype()); break;
+        case (TYPE_U64):  result_expr = new Expr(loops::pow(restoreExprType<uint64_t>(base_expr), p).notype()); break;
+        case (TYPE_FP16): result_expr = new Expr(loops::pow(restoreExprType<f16_t>(base_expr), p).notype()); break;
+        case (TYPE_FP32): result_expr = new Expr(loops::pow(restoreExprType<float>(base_expr), p).notype()); break;
+        case (TYPE_FP64): result_expr = new Expr(loops::pow(restoreExprType<double>(base_expr), p).notype()); break;
+        default: 
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // 4. Создаем результирующий Python-объект PyVReg
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->type = res_type;
+    py_res->expr = result_expr;
+
+    return (PyObject*)py_res;
+}
 
 static PyNumberMethods PyVReg_as_number = {
     .nb_add = (binaryfunc)PyVReg_add,
     .nb_subtract = (binaryfunc)PyVReg_sub,
     .nb_multiply = (binaryfunc)PyVReg_mul,
+    .nb_power = (ternaryfunc)PyVReg_pow,
     .nb_lshift = (binaryfunc)PyVReg_lshift,
     .nb_rshift = (binaryfunc)PyVReg_rshift,
     .nb_and = (binaryfunc)PyVReg_and,  
