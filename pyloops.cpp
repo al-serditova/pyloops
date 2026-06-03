@@ -975,6 +975,107 @@ static PyObject* PyVReg_reduce_sum(PyObject* self, PyObject* args) {
     return (PyObject*)py_res;
 }
 
+static PyObject* PyVReg_getlane(PyObject* self, PyObject* args) {
+    PyObject* py_r;
+    int lanenum;
+
+    // Парсим аргументы: getlane(vreg, index)
+    if (!PyArg_ParseTuple(args, "Oi", &py_r, &lanenum)) {
+        return NULL;
+    }
+
+    // 1. Проверяем, что первый аргумент — это вектор
+    if (!PyObject_TypeCheck(py_r, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: getlane: First argument must be a VReg object");
+        return NULL;
+    }
+
+    PyVReg* r = (PyVReg*)py_r;
+    int res_type = r->type;
+
+    USE_CONTEXT_(ctx);
+    Expr expr_r = r->getExpr();
+    
+    // Сюда сохраним полученный скалярный IExpr
+    IExpr result_iexpr;
+
+    // 3. Восстанавливаем тип вектора
+    switch (res_type) {
+        case (TYPE_I8):   result_iexpr = getlane(restoreExprType<int8_t>(expr_r),   lanenum); break;
+        case (TYPE_U8):   result_iexpr = getlane(restoreExprType<uint8_t>(expr_r),  lanenum); break;
+        case (TYPE_I16):  result_iexpr = getlane(restoreExprType<int16_t>(expr_r),  lanenum); break;
+        case (TYPE_U16):  result_iexpr = getlane(restoreExprType<uint16_t>(expr_r), lanenum); break;
+        case (TYPE_I32):  result_iexpr = getlane(restoreExprType<int32_t>(expr_r),  lanenum); break;
+        case (TYPE_U32):  result_iexpr = getlane(restoreExprType<uint32_t>(expr_r), lanenum); break;
+        case (TYPE_I64):  result_iexpr = getlane(restoreExprType<int64_t>(expr_r),  lanenum); break;
+        case (TYPE_U64):  result_iexpr = getlane(restoreExprType<uint64_t>(expr_r), lanenum); break;
+        case (TYPE_FP16): result_iexpr = getlane(restoreExprType<f16_t>(expr_r),    lanenum); break;
+        case (TYPE_FP32): result_iexpr = getlane(restoreExprType<float>(expr_r),    lanenum); break;
+        case (TYPE_FP64): result_iexpr = getlane(restoreExprType<double>(expr_r),   lanenum); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // 4. Оборачиваем результат в СКАЛЯРНЫЙ Python-объект PyIReg
+    PyIReg* py_res = PyObject_New(PyIReg, &PyIRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->expr = new loops::IExpr(result_iexpr);
+
+    return (PyObject*)py_res;
+}
+
+static PyObject* PyVReg_setlane(PyObject* self, PyObject* args) {
+    PyObject *py_v, *py_laneval;
+    int lanenum;
+
+    // Парсим три аргумента: setlane(vreg, index, ireg)
+    if (!PyArg_ParseTuple(args, "OiO", &py_v, &lanenum, &py_laneval)) {
+        return NULL;
+    }
+
+    // 1. Проверяем вектор
+    if (!PyObject_TypeCheck(py_v, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: setlane: First argument must be a VReg object");
+        return NULL;
+    }
+
+    // 3. Проверяем и извлекаем скалярное значение (поддерживаем PyIReg и обычные питоновские инты)
+    IExpr value_iexpr;
+    if (PyObject_TypeCheck(py_laneval, &PyIRegType)) {
+        value_iexpr = ((PyIReg*)py_laneval)->getExpr();
+    } else {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: setlane: Third argument must be an IReg");
+        return NULL;
+    }
+
+    PyVReg* v = (PyVReg*)py_v;
+    int res_type = v->type;
+
+    USE_CONTEXT_(ctx);
+    Expr expr_v = v->getExpr();
+
+    // 4. Восстанавливаем тип вектора (возвращает void)
+    switch (res_type) {
+        case (TYPE_I8):   setlane(restoreExprType<int8_t>(expr_v),   lanenum, value_iexpr); break;
+        case (TYPE_U8):   setlane(restoreExprType<uint8_t>(expr_v),  lanenum, value_iexpr); break;
+        case (TYPE_I16):  setlane(restoreExprType<int16_t>(expr_v),  lanenum, value_iexpr); break;
+        case (TYPE_U16):  setlane(restoreExprType<uint16_t>(expr_v), lanenum, value_iexpr); break;
+        case (TYPE_I32):  setlane(restoreExprType<int32_t>(expr_v),  lanenum, value_iexpr); break;
+        case (TYPE_U32):  setlane(restoreExprType<uint32_t>(expr_v), lanenum, value_iexpr); break;
+        case (TYPE_I64):  setlane(restoreExprType<int64_t>(expr_v),  lanenum, value_iexpr); break;
+        case (TYPE_U64):  setlane(restoreExprType<uint64_t>(expr_v), lanenum, value_iexpr); break;
+        case (TYPE_FP16): setlane(restoreExprType<f16_t>(expr_v),    lanenum, value_iexpr); break;
+        case (TYPE_FP32): setlane(restoreExprType<float>(expr_v),    lanenum, value_iexpr); break;
+        case (TYPE_FP64): setlane(restoreExprType<double>(expr_v),   lanenum, value_iexpr); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // Возвращаем None, так как функция void
+    Py_RETURN_NONE;
+}
+
 static PyObject *PyVbytes(PyObject *self, PyObject *args) {
     return PyLong_FromLongLong(ctx.vbytes());
 }
@@ -1016,6 +1117,8 @@ static PyMethodDef PyloopsMethods[] = {
     {"fma", (PyCFunction)PyVReg_fma, METH_VARARGS, "Vector Fused Multiply-Add: fma(a, b, c) -> a * b + c"},
     {"ext", (PyCFunction)PyVReg_ext, METH_VARARGS, "Extract vector from two concatenated vectors: ext(n, m, index)"}, 
     {"reduce_sum", (PyCFunction)PyVReg_reduce_sum, METH_VARARGS, "Horizontal sum of vector elements: reduce_sum(r)"},
+    {"getlane", (PyCFunction)PyVReg_getlane, METH_VARARGS, "Get scalar element from vector: getlane(vreg, index) -> IReg"},
+{"setlane", (PyCFunction)PyVReg_setlane, METH_VARARGS, "Set scalar element in vector: setlane(vreg, index, value)"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
