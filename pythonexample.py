@@ -28,11 +28,12 @@ ptr = pyloops.IReg()
 a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr)
-# v1 = pyloops.loadVec(np.int32, ptr)
-loaded = pyloops.loadVec(np.int32, ptr, 0)
-v2 = pyloops.VReg(np.int32, 2)
-loaded += v2
-pyloops.storevec(ptr, loaded)
+v1 = pyloops.loadVec(np.int32, ptr)
+v2 = pyloops.loadVec(np.int32, ptr, 4)
+mask = (v1 > v2)
+res = pyloops.vselect(mask, v1, v2)
+
+pyloops.storevec(ptr, res)
 
 pyloops.end_func()
 

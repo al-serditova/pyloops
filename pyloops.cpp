@@ -725,6 +725,89 @@ static PyObject* PyIReg_select(PyObject* self, PyObject* args) {
     return (PyObject*)py_res;
 }
 
+static PyObject* PyVReg_select(PyObject* self, PyObject* args) {
+    PyObject *py_cond, *py_true, *py_false;
+    
+    if (!PyArg_ParseTuple(args, "OOO", &py_cond, &py_true, &py_false)) {
+        return NULL;
+    }
+
+    if (!PyObject_TypeCheck(py_cond, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: select: Condition must be a VReg mask");
+        return NULL;
+    }
+
+    Expr cond_expr = ((PyVReg*)py_cond)->getExpr();
+    Expr t_expr;
+    Expr f_expr;
+    int res_type = -1;
+
+    // 1. Разбираемся с типами true/false аргументов и приводим их к Expr
+    if (PyObject_TypeCheck(py_true, &PyVRegType)) {
+        res_type = ((PyVReg*)py_true)->type;
+        t_expr = ((PyVReg*)py_true)->getExpr();
+    } else {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: select: Only VRegs are supported");
+        return NULL;
+    }
+
+    if (PyObject_TypeCheck(py_false, &PyVRegType)) {
+        if (res_type != ((PyVReg*)py_false)->type) {
+            PyErr_SetString(PyExc_TypeError, "PyLoops: select: True and False VReg types must match");
+            return NULL;
+        }
+        f_expr = ((PyVReg*)py_false)->getExpr();
+    } else {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: select: Only VRegs are supported");
+        return NULL;
+    }
+
+    int cond_type = res_type == TYPE_U8 ? TYPE_U8 :
+                    res_type == TYPE_I8 ? TYPE_U8 :
+                    res_type == TYPE_U16 ? TYPE_U16 :
+                    res_type == TYPE_I16 ? TYPE_U16 :
+                    res_type == TYPE_U32 ? TYPE_U32 :
+                    res_type == TYPE_I32 ? TYPE_U32 :
+                    res_type == TYPE_U64 ? TYPE_U64 :
+                    res_type == TYPE_I64 ? TYPE_U64 :
+                    res_type == TYPE_FP16 ? TYPE_U16 :
+                    res_type == TYPE_FP32 ? TYPE_U32 :
+                    res_type == TYPE_FP64 ? TYPE_U64 : -1;
+    if (cond_type != ((PyVReg*)py_cond)->type) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: select: Condition type have to be unsigned int of true/false values type");
+        return NULL;
+    }
+
+    USE_CONTEXT_(ctx);
+    Expr* result_expr = nullptr;
+
+    // 2. Напрямую вызываем конструктор VExpr<T> с опкодом VOP_SELECT и списком аргументов.
+    // В конце вызываем .notype(), чтобы сохранить результат как базовый Expr.
+    switch (res_type) {
+        case (TYPE_I8):   result_expr = new Expr(VExpr<int8_t>  (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_U8):   result_expr = new Expr(VExpr<uint8_t> (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_I16):  result_expr = new Expr(VExpr<int16_t> (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_U16):  result_expr = new Expr(VExpr<uint16_t>(VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_I32):  result_expr = new Expr(VExpr<int32_t> (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_U32):  result_expr = new Expr(VExpr<uint32_t>(VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_I64):  result_expr = new Expr(VExpr<int64_t> (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_U64):  result_expr = new Expr(VExpr<uint64_t>(VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_FP16): result_expr = new Expr(VExpr<f16_t>   (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_FP32): result_expr = new Expr(VExpr<float>   (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        case (TYPE_FP64): result_expr = new Expr(VExpr<double>  (VOP_SELECT, {cond_expr, t_expr, f_expr}).notype()); break;
+        default: Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // 3. Создаем результирующий Python-объект
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->type = res_type;
+    py_res->expr = result_expr;
+
+    return (PyObject*)py_res;
+}
+
 static PyObject *PyVbytes(PyObject *self, PyObject *args) {
     return PyLong_FromLongLong(ctx.vbytes());
 }
@@ -761,6 +844,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"min_",         (PyCFunction)Py_min,    METH_VARARGS, "Minimum of two values"},
     {"max_",         (PyCFunction)Py_max,    METH_VARARGS, "Maximum of two values"},
     {"select_", (PyCFunction)PyIReg_select, METH_VARARGS, "Conditional select: cond ? true : false"},
+    {"vselect", (PyCFunction)PyVReg_select, METH_VARARGS, "Vector ternary select: vselect(mask, true_val, false_val)"},
     {"vbytes",  PyVbytes, METH_NOARGS, "Size of vector register in bytes."},
     {NULL, NULL, 0, NULL}};
 
