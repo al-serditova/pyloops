@@ -6,14 +6,6 @@ loops::VReg<_Tp>& getVReg(void* reg)
     return *(static_cast<loops::VReg<_Tp>*>(reg));
 }
 
-template <typename _Tp>
-VExpr<_Tp> restoreExprType(const Expr& e)
-{
-    VExpr<_Tp> result;
-    result.super = e; //DUBUG: since we have reference counting here, it can be dangerous, check it out.
-    return result;
-}
-
 extern "C"
 {
 

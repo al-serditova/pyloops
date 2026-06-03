@@ -23,5 +23,12 @@ PyObject *PyVReg_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 int PyVReg_init(PyVReg *self, PyObject *args, PyObject *kwds);
 void PyVReg_dealloc(PyVReg *self);
 int PyVReg_set_assign(PyVReg* self, PyObject* value, void* closure);
+}
 
+template <typename _Tp>
+VExpr<_Tp> restoreExprType(const Expr& e)
+{
+    VExpr<_Tp> result;
+    result.super = e; //DUBUG: since we have reference counting here, it can be dangerous, check it out.
+    return result;
 }

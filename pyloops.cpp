@@ -808,6 +808,61 @@ static PyObject* PyVReg_select(PyObject* self, PyObject* args) {
     return (PyObject*)py_res;
 }
 
+static PyObject* PyVReg_fma(PyObject* self, PyObject* args) {
+    PyObject *py_a, *py_b, *py_c;
+
+    if (!PyArg_ParseTuple(args, "OOO", &py_a, &py_b, &py_c)) {
+        return NULL;
+    }
+
+    if (!PyObject_TypeCheck(py_a, &PyVRegType) || 
+        !PyObject_TypeCheck(py_b, &PyVRegType) || 
+        !PyObject_TypeCheck(py_c, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: fma: All three arguments must be VReg objects");
+        return NULL;
+    }
+
+    PyVReg* a = (PyVReg*)py_a;
+    PyVReg* b = (PyVReg*)py_b;
+    PyVReg* c = (PyVReg*)py_c;
+
+    if (a->type != b->type || a->type != c->type) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: fma: Types of all VReg arguments must match");
+        return NULL;
+    }
+
+    int res_type = a->type;
+
+    // Проверяем, что тип относится к плавающей точке
+    if (res_type != TYPE_FP16 && res_type != TYPE_FP32 && res_type != TYPE_FP64) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: fma: Only floating-point types (fp16, fp32, fp64) are supported");
+        return NULL;
+    }
+
+    USE_CONTEXT_(ctx);
+
+    Expr expr_a = a->getExpr();
+    Expr expr_b = b->getExpr();
+    Expr expr_c = c->getExpr();
+    Expr* result_expr = nullptr;
+
+    switch (res_type) {
+        case (TYPE_FP16): result_expr = new Expr(fma(restoreExprType<f16_t>(expr_a),  restoreExprType<f16_t>(expr_b),  restoreExprType<f16_t>(expr_c)).notype()); break;
+        case (TYPE_FP32): result_expr = new Expr(fma(restoreExprType<float>(expr_a),  restoreExprType<float>(expr_b),  restoreExprType<float>(expr_c)).notype()); break;
+        case (TYPE_FP64): result_expr = new Expr(fma(restoreExprType<double>(expr_a), restoreExprType<double>(expr_b), restoreExprType<double>(expr_c)).notype()); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->type = res_type;
+    py_res->expr = result_expr;
+
+    return (PyObject*)py_res;
+}
+
 static PyObject *PyVbytes(PyObject *self, PyObject *args) {
     return PyLong_FromLongLong(ctx.vbytes());
 }
@@ -846,6 +901,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"select_", (PyCFunction)PyIReg_select, METH_VARARGS, "Conditional select: cond ? true : false"},
     {"vselect", (PyCFunction)PyVReg_select, METH_VARARGS, "Vector ternary select: vselect(mask, true_val, false_val)"},
     {"vbytes",  PyVbytes, METH_NOARGS, "Size of vector register in bytes."},
+    {"fma", (PyCFunction)PyVReg_fma, METH_VARARGS, "Vector Fused Multiply-Add: fma(a, b, c) -> a * b + c"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
