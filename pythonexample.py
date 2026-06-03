@@ -29,11 +29,11 @@ a = pyloops.IReg()
 
 pyloops.start_func("aaaa", ptr)
 v1 = pyloops.VReg(np.float32, pyloops.loadVec(np.float32, ptr))
-v2 = pyloops.VReg(np.float32, pyloops.loadVec(np.float32, ptr, 32))
+# v2 = pyloops.VReg(np.float32, pyloops.loadVec(np.float32, ptr, 32))
 # mask = pyloops.VReg(np.uint32, (v1 > v2))
 # res = pyloops.VReg(np.int32, pyloops.vselect(mask, v1, v2))
 
-pyloops.storevec(ptr, pyloops.ext(v1, v1, 5))
+pyloops.storevec(ptr, pyloops.reduce_sum(v1))
 
 pyloops.end_func()
 

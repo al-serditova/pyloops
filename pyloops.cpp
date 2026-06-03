@@ -927,6 +927,54 @@ static PyObject* PyVReg_ext(PyObject* self, PyObject* args) {
     return (PyObject*)py_res;
 }
 
+static PyObject* PyVReg_reduce_sum(PyObject* self, PyObject* args) {
+    PyObject* py_r;
+
+    // Парсим один векторный аргумент: reduce_sum(r)
+    if (!PyArg_ParseTuple(args, "O", &py_r)) {
+        return NULL;
+    }
+
+    // 1. Проверяем, что аргумент — это наш VReg
+    if (!PyObject_TypeCheck(py_r, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: reduce_sum: Argument must be a VReg object");
+        return NULL;
+    }
+
+    PyVReg* r = (PyVReg*)py_r;
+    int res_type = r->type;
+    USE_CONTEXT_(ctx);
+
+    Expr expr_r = r->getExpr();
+    Expr* result_expr = nullptr;
+
+    // 2. Восстанавливаем типы через restoreExprType<T>
+    switch (res_type) {
+        case (TYPE_I8):   result_expr = new Expr(reduce_sum(restoreExprType<int8_t>(expr_r)).notype()); break;
+        case (TYPE_U8):   result_expr = new Expr(reduce_sum(restoreExprType<uint8_t>(expr_r)).notype()); break;
+        case (TYPE_I16):  result_expr = new Expr(reduce_sum(restoreExprType<int16_t>(expr_r)).notype()); break;
+        case (TYPE_U16):  result_expr = new Expr(reduce_sum(restoreExprType<uint16_t>(expr_r)).notype()); break;
+        case (TYPE_I32):  result_expr = new Expr(reduce_sum(restoreExprType<int32_t>(expr_r)).notype()); break;
+        case (TYPE_U32):  result_expr = new Expr(reduce_sum(restoreExprType<uint32_t>(expr_r)).notype()); break;
+        case (TYPE_I64):  result_expr = new Expr(reduce_sum(restoreExprType<int64_t>(expr_r)).notype()); break;
+        case (TYPE_U64):  result_expr = new Expr(reduce_sum(restoreExprType<uint64_t>(expr_r)).notype()); break;
+        case (TYPE_FP16): result_expr = new Expr(reduce_sum(restoreExprType<f16_t>(expr_r)).notype()); break;
+        case (TYPE_FP32): result_expr = new Expr(reduce_sum(restoreExprType<float>(expr_r)).notype()); break;
+        case (TYPE_FP64): result_expr = new Expr(reduce_sum(restoreExprType<double>(expr_r)).notype()); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // 3. Оборачиваем результат в Python-объект PyVReg (так как возвращается VExpr)
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->type = res_type;
+    py_res->expr = result_expr;
+
+    return (PyObject*)py_res;
+}
+
 static PyObject *PyVbytes(PyObject *self, PyObject *args) {
     return PyLong_FromLongLong(ctx.vbytes());
 }
@@ -967,6 +1015,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"vbytes",  PyVbytes, METH_NOARGS, "Size of vector register in bytes."},
     {"fma", (PyCFunction)PyVReg_fma, METH_VARARGS, "Vector Fused Multiply-Add: fma(a, b, c) -> a * b + c"},
     {"ext", (PyCFunction)PyVReg_ext, METH_VARARGS, "Extract vector from two concatenated vectors: ext(n, m, index)"}, 
+    {"reduce_sum", (PyCFunction)PyVReg_reduce_sum, METH_VARARGS, "Horizontal sum of vector elements: reduce_sum(r)"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
