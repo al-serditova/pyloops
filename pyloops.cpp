@@ -863,6 +863,70 @@ static PyObject* PyVReg_fma(PyObject* self, PyObject* args) {
     return (PyObject*)py_res;
 }
 
+static PyObject* PyVReg_ext(PyObject* self, PyObject* args) {
+    PyObject *py_n, *py_m, *py_index;
+
+    // Парсим три аргумента: ext(n, m, index)
+    if (!PyArg_ParseTuple(args, "OOO", &py_n, &py_m, &py_index)) {
+        return NULL;
+    }
+
+    // 1. Проверяем, что первые два аргумента — это наши VReg
+    if (!PyObject_TypeCheck(py_n, &PyVRegType) || !PyObject_TypeCheck(py_m, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: ext: First two arguments must be VReg objects");
+        return NULL;
+    }
+
+    // 2. Проверяем, что третий аргумент — это константное целое число
+    if (!PyLong_Check(py_index)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: ext: Index must be an integer constant");
+        return NULL;
+    }
+
+    PyVReg* n = (PyVReg*)py_n;
+    PyVReg* m = (PyVReg*)py_m;
+    int64_t index = (int64_t)PyLong_AsLongLong(py_index);
+
+    // 3. Проверяем совпадение типов векторов
+    if (n->type != m->type) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: ext: Vector types must match");
+        return NULL;
+    }
+
+    int res_type = n->type;
+    USE_CONTEXT_(ctx);
+
+    Expr expr_n = n->getExpr();
+    Expr expr_m = m->getExpr();
+    Expr* result_expr = nullptr;
+
+    // 4. Восстанавливаем типы через restoreExprType<T>
+    switch (res_type) {
+        case (TYPE_I8):   result_expr = new Expr(ext(restoreExprType<int8_t>(expr_n),   restoreExprType<int8_t>(expr_m),   index).notype()); break;
+        case (TYPE_U8):   result_expr = new Expr(ext(restoreExprType<uint8_t>(expr_n),  restoreExprType<uint8_t>(expr_m),  index).notype()); break;
+        case (TYPE_I16):  result_expr = new Expr(ext(restoreExprType<int16_t>(expr_n),  restoreExprType<int16_t>(expr_m),  index).notype()); break;
+        case (TYPE_U16):  result_expr = new Expr(ext(restoreExprType<uint16_t>(expr_n), restoreExprType<uint16_t>(expr_m), index).notype()); break;
+        case (TYPE_I32):  result_expr = new Expr(ext(restoreExprType<int32_t>(expr_n),  restoreExprType<int32_t>(expr_m),  index).notype()); break;
+        case (TYPE_U32):  result_expr = new Expr(ext(restoreExprType<uint32_t>(expr_n), restoreExprType<uint32_t>(expr_m), index).notype()); break;
+        case (TYPE_I64):  result_expr = new Expr(ext(restoreExprType<int64_t>(expr_n),  restoreExprType<int64_t>(expr_m),  index).notype()); break;
+        case (TYPE_U64):  result_expr = new Expr(ext(restoreExprType<uint64_t>(expr_n), restoreExprType<uint64_t>(expr_m), index).notype()); break;
+        case (TYPE_FP16): result_expr = new Expr(ext(restoreExprType<f16_t>(expr_n),    restoreExprType<f16_t>(expr_m), index).notype()); break;
+        case (TYPE_FP32): result_expr = new Expr(ext(restoreExprType<float>(expr_n),    restoreExprType<float>(expr_m),    index).notype()); break;
+        case (TYPE_FP64): result_expr = new Expr(ext(restoreExprType<double>(expr_n),   restoreExprType<double>(expr_m),   index).notype()); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    // 5. Оборачиваем результат в Python-объект PyVReg
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->type = res_type;
+    py_res->expr = result_expr;
+
+    return (PyObject*)py_res;
+}
+
 static PyObject *PyVbytes(PyObject *self, PyObject *args) {
     return PyLong_FromLongLong(ctx.vbytes());
 }
@@ -902,6 +966,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"vselect", (PyCFunction)PyVReg_select, METH_VARARGS, "Vector ternary select: vselect(mask, true_val, false_val)"},
     {"vbytes",  PyVbytes, METH_NOARGS, "Size of vector register in bytes."},
     {"fma", (PyCFunction)PyVReg_fma, METH_VARARGS, "Vector Fused Multiply-Add: fma(a, b, c) -> a * b + c"},
+    {"ext", (PyCFunction)PyVReg_ext, METH_VARARGS, "Extract vector from two concatenated vectors: ext(n, m, index)"}, 
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
