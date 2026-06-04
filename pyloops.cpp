@@ -1076,6 +1076,82 @@ static PyObject* PyVReg_setlane(PyObject* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
+static PyObject* PyVReg_reinterpret(PyObject* self, PyObject* args) {
+    PyObject* py_src;
+    PyObject* py_dest_type;
+
+    // Парсим аргументы: reinterpret(vreg, dest_type)
+    if (!PyArg_ParseTuple(args, "OO", &py_src, &py_dest_type)) {
+        return NULL;
+    }
+
+    // 1. Проверяем входной вектор
+    if (!PyObject_TypeCheck(py_src, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: reinterpret: First argument must be a VReg object");
+        return NULL;
+    }
+
+    PyVReg* src_vreg = (PyVReg*)py_src;
+    int src_type = src_vreg->type; // _Tp
+
+    // 2. Конвертируем питоновский целевой тип в ваш внутренний enum TYPE_...
+    int dest_type = type_from_numpy(py_dest_type);
+    if (dest_type == -1) {
+        return NULL;
+    }
+
+    USE_CONTEXT_(ctx);
+    Expr expr_src = src_vreg->getExpr();
+    Expr* result_expr = nullptr;
+
+    // Вспомогательный макрос, чтобы не писать терабайты кода во вложенном switch.
+    // Восстанавливаем тип источника через restoreExprType<SRC_T> и вызываем loops::reinterpret<DST_T, SRC_T>
+    #define INNER_CAST_SWITCH(SRC_T) \
+        switch (dest_type) { \
+            case (TYPE_I8):   result_expr = new Expr(loops::reinterpret<int8_t,  SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_U8):   result_expr = new Expr(loops::reinterpret<uint8_t, SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_I16):  result_expr = new Expr(loops::reinterpret<int16_t, SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_U16):  result_expr = new Expr(loops::reinterpret<uint16_t,SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_I32):  result_expr = new Expr(loops::reinterpret<int32_t, SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_U32):  result_expr = new Expr(loops::reinterpret<uint32_t,SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_I64):  result_expr = new Expr(loops::reinterpret<int64_t, SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_U64):  result_expr = new Expr(loops::reinterpret<uint64_t,SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_FP16): result_expr = new Expr(loops::reinterpret<loops::f16_t, SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_FP32): result_expr = new Expr(loops::reinterpret<float,   SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            case (TYPE_FP64): result_expr = new Expr(loops::reinterpret<double,  SRC_T>(restoreExprType<SRC_T>(expr_src)).notype()); break; \
+            default: Py_RETURN_NOTIMPLEMENTED; \
+        } \
+        break;
+
+    // 3. Внешний switch по исходному типу векторов
+    switch (src_type) {
+        case (TYPE_I8):   INNER_CAST_SWITCH(int8_t);
+        case (TYPE_U8):   INNER_CAST_SWITCH(uint8_t);
+        case (TYPE_I16):  INNER_CAST_SWITCH(int16_t);
+        case (TYPE_U16):  INNER_CAST_SWITCH(uint16_t);
+        case (TYPE_I32):  INNER_CAST_SWITCH(int32_t);
+        case (TYPE_U32):  INNER_CAST_SWITCH(uint32_t);
+        case (TYPE_I64):  INNER_CAST_SWITCH(int64_t);
+        case (TYPE_U64):  INNER_CAST_SWITCH(uint64_t);
+        case (TYPE_FP16): INNER_CAST_SWITCH(loops::f16_t);
+        case (TYPE_FP32): INNER_CAST_SWITCH(float);
+        case (TYPE_FP64): INNER_CAST_SWITCH(double);
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    #undef INNER_CAST_SWITCH
+
+    // 4. Оборачиваем результат в новый Python-объект PyVReg с ЦЕЛЕВЫМ типом (dest_type)
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->type = dest_type; // Важно: тип нового регистра меняется на целевой!
+    py_res->expr = result_expr;
+
+    return (PyObject*)py_res;
+}
+
 static PyObject *PyVbytes(PyObject *self, PyObject *args) {
     return PyLong_FromLongLong(ctx.vbytes());
 }
@@ -1089,7 +1165,7 @@ static PyMethodDef PyloopsMethods[] = {
     {"end_func", PyEndFunc, METH_NOARGS, "End function."},
     {"get_func", PyGetFunc, METH_VARARGS, "Returns a Func object by name"},
     {"load_", (PyCFunction)PyLoad, METH_VARARGS, "Load value from memory with given numpy type"},
-    {"loadVec",  (PyCFunction)PyLoadVec,  METH_VARARGS, "Load vector from memory (base, [offset])"},
+    {"loadvec",  (PyCFunction)PyLoadVec,  METH_VARARGS, "Load vector from memory (base, [offset])"},
     {"store_",  (PyCFunction)PyStore,  METH_VARARGS, "Store value to memory with given numpy type"},
     {"storevec",  (PyCFunction)PyStoreVec,  METH_VARARGS, "Store vector register to memory"},
     {"if_",       (PyCFunction)PyIf,       METH_O,      "Start an if block"},
@@ -1112,13 +1188,14 @@ static PyMethodDef PyloopsMethods[] = {
     {"min_",         (PyCFunction)Py_min,    METH_VARARGS, "Minimum of two values"},
     {"max_",         (PyCFunction)Py_max,    METH_VARARGS, "Maximum of two values"},
     {"select_", (PyCFunction)PyIReg_select, METH_VARARGS, "Conditional select: cond ? true : false"},
-    {"vselect", (PyCFunction)PyVReg_select, METH_VARARGS, "Vector ternary select: vselect(mask, true_val, false_val)"},
+    {"selectvec", (PyCFunction)PyVReg_select, METH_VARARGS, "Vector ternary select: vselect(mask, true_val, false_val)"},
     {"vbytes",  PyVbytes, METH_NOARGS, "Size of vector register in bytes."},
     {"fma", (PyCFunction)PyVReg_fma, METH_VARARGS, "Vector Fused Multiply-Add: fma(a, b, c) -> a * b + c"},
     {"ext", (PyCFunction)PyVReg_ext, METH_VARARGS, "Extract vector from two concatenated vectors: ext(n, m, index)"}, 
     {"reduce_sum", (PyCFunction)PyVReg_reduce_sum, METH_VARARGS, "Horizontal sum of vector elements: reduce_sum(r)"},
     {"getlane", (PyCFunction)PyVReg_getlane, METH_VARARGS, "Get scalar element from vector: getlane(vreg, index) -> IReg"},
-{"setlane", (PyCFunction)PyVReg_setlane, METH_VARARGS, "Set scalar element in vector: setlane(vreg, index, value)"},
+    {"setlane", (PyCFunction)PyVReg_setlane, METH_VARARGS, "Set scalar element in vector: setlane(vreg, index, value)"},
+    {"reinterpret", (PyCFunction)PyVReg_reinterpret, METH_VARARGS, "Reinterpret vector bit representation as another type: reinterpret(vreg, dest_type)"},
     {NULL, NULL, 0, NULL}};
 
 // Описание модуля
