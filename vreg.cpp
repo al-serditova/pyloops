@@ -328,15 +328,6 @@ static PyObject* PyVReg_ixor(PyObject* self, PyObject* other) { return PyVReg_in
 static PyObject* PyVReg_ilshift(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_SAL, true); }
 static PyObject* PyVReg_irshift(PyObject* self, PyObject* other) { return PyVReg_inplace(self, other, VOP_SAR, true); }
 
-
-// static PyObject* PyVReg_ilshift(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_SHL);
-// }
-
-// static PyObject* PyVReg_irshift(PyObject* self, PyObject* other) {
-//     return PyVReg_inplace(self, other, OP_SHR);
-// }
-
 PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode, bool maskedtypeout) {
     USE_CONTEXT_(ctx);
     Expr* expr;
@@ -355,7 +346,7 @@ PyObject* PyVReg_binary(PyObject* v, PyObject* w, int opcode, bool maskedtypeout
     }
     else 
         Py_RETURN_NOTIMPLEMENTED;
-    int outtype = ((PyVReg*)w)->type;
+    int outtype = ((PyVReg*)v)->type;
     if(maskedtypeout)
     {
         outtype = outtype == TYPE_U8 ? TYPE_U8 :
@@ -418,7 +409,7 @@ static PyObject* PyVReg_mul(PyObject* v, PyObject* w) { return PyVReg_binary(v, 
 static PyObject* PyVReg_div(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_DIV); }
 
 static PyObject* PyVReg_and(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_AND); }
-static PyObject* PyVReg_or(PyObject* v, PyObject* w)  { return PyVReg_binary(v, w, VOP_OR); }
+static PyObject* PyVReg_or(PyObject* v, PyObject* w)  { return PyVReg_binary(v, w, VOP_OR);  }
 static PyObject* PyVReg_xor(PyObject* v, PyObject* w) { return PyVReg_binary(v, w, VOP_XOR); }
 
 static PyObject* PyVReg_lshift(PyObject* self, PyObject* args) { return PyVReg_binary(self, args, VOP_SAL); }
@@ -455,7 +446,45 @@ static PyObject* PyVReg_rshift(PyObject* self, PyObject* args) { return PyVReg_b
 
 // static PyObject* PyVReg_negative(PyObject* v) { return PyVReg_unary(v, OP_NEG); }
 // static PyObject* PyVReg_abs(PyObject* v)      { return PyVReg_unary(v, OP_ABS); }
-// static PyObject* PyVReg_invert(PyObject* v)   { return PyVReg_unary(v, OP_NOT); }
+
+static PyObject* PyVReg_invert(PyObject* self) {
+    if (!PyObject_TypeCheck(self, &PyVRegType)) {
+        PyErr_SetString(PyExc_TypeError, "PyLoops: ~ operator expects a VReg object");
+        return NULL;
+    }
+
+    PyVReg* v = (PyVReg*)self;
+    int res_type = v->type;
+    USE_CONTEXT_(ctx);
+
+    Expr expr_v = v->getExpr();
+    Expr* result_expr = nullptr;
+
+    // Восстанавливаем типы и вызываем унарный оператор ~ из loops
+    switch (res_type) {
+        case (TYPE_I8):   result_expr = new Expr((~restoreExprType<int8_t>(expr_v)).notype()); break;
+        case (TYPE_U8):   result_expr = new Expr((~restoreExprType<uint8_t>(expr_v)).notype()); break;
+        case (TYPE_I16):  result_expr = new Expr((~restoreExprType<int16_t>(expr_v)).notype()); break;
+        case (TYPE_U16):  result_expr = new Expr((~restoreExprType<uint16_t>(expr_v)).notype()); break;
+        case (TYPE_I32):  result_expr = new Expr((~restoreExprType<int32_t>(expr_v)).notype()); break;
+        case (TYPE_U32):  result_expr = new Expr((~restoreExprType<uint32_t>(expr_v)).notype()); break;
+        case (TYPE_I64):  result_expr = new Expr((~restoreExprType<int64_t>(expr_v)).notype()); break;
+        case (TYPE_U64):  result_expr = new Expr((~restoreExprType<uint64_t>(expr_v)).notype()); break;
+        case (TYPE_FP16): result_expr = new Expr((~restoreExprType<f16_t>(expr_v)).notype()); break;
+        case (TYPE_FP32): result_expr = new Expr((~restoreExprType<float>(expr_v)).notype()); break;
+        case (TYPE_FP64): result_expr = new Expr((~restoreExprType<double>(expr_v)).notype()); break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    PyVReg* py_res = PyObject_New(PyVReg, &PyVRegType);
+    if (!py_res) return NULL;
+    py_res->reg = nullptr;
+    py_res->type = res_type;
+    py_res->expr = result_expr;
+
+    return (PyObject*)py_res;
+}
 
 static PyObject* PyVReg_pow(PyObject* v, PyObject* w, PyObject* z) {
     // 1. Проверяем, что первый аргумент — наш векторный VReg
@@ -511,6 +540,7 @@ static PyNumberMethods PyVReg_as_number = {
     .nb_subtract = (binaryfunc)PyVReg_sub,
     .nb_multiply = (binaryfunc)PyVReg_mul,
     .nb_power = (ternaryfunc)PyVReg_pow,
+    .nb_invert = (unaryfunc)PyVReg_invert,
     .nb_lshift = (binaryfunc)PyVReg_lshift,
     .nb_rshift = (binaryfunc)PyVReg_rshift,
     .nb_and = (binaryfunc)PyVReg_and,  
@@ -518,18 +548,16 @@ static PyNumberMethods PyVReg_as_number = {
     .nb_or = (binaryfunc)PyVReg_or,
     // .nb_int = 0,     
     // .nb_float = 0,                       
-    // .nb_inplace_add = (binaryfunc)PyVReg_iadd, 
-    // .nb_inplace_subtract = (binaryfunc)PyVReg_isub,
-    // .nb_inplace_multiply = (binaryfunc)PyVReg_imul,
-    // .nb_inplace_remainder = (binaryfunc)PyVReg_imod,
-    // .nb_inplace_lshift = (binaryfunc)PyVReg_ilshift,
-    // .nb_inplace_rshift = (binaryfunc)PyVReg_irshift,
-    // .nb_inplace_and = (binaryfunc)PyVReg_iand,
-    // .nb_inplace_xor = (binaryfunc)PyVReg_ixor,
-    // .nb_inplace_or = (binaryfunc)PyVReg_ior,
-    // .nb_floor_divide = (binaryfunc)PyVReg_div,
+    .nb_inplace_add = (binaryfunc)PyVReg_iadd, 
+    .nb_inplace_subtract = (binaryfunc)PyVReg_isub,
+    .nb_inplace_multiply = (binaryfunc)PyVReg_imul,
+    .nb_inplace_lshift = (binaryfunc)PyVReg_ilshift,
+    .nb_inplace_rshift = (binaryfunc)PyVReg_irshift,
+    .nb_inplace_and = (binaryfunc)PyVReg_iand,
+    .nb_inplace_xor = (binaryfunc)PyVReg_ixor,
+    .nb_inplace_or = (binaryfunc)PyVReg_ior,
     .nb_true_divide = (binaryfunc)PyVReg_div,
-    // .nb_inplace_floor_divide = (binaryfunc)PyVReg_idiv,
+    .nb_inplace_floor_divide = (binaryfunc)PyVReg_idiv,
 };
 
 
