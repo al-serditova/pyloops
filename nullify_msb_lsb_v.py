@@ -1,4 +1,3 @@
-import numpy as np
 import sys
 import ctypes
 sys.path.append("/home/vtdrs/work/pyloops/build/")
