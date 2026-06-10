@@ -101,7 +101,7 @@ executable_func = ctypes.CFUNCTYPE(
 def hash_pyloops(input_array, output_array):
     """
     Обертка для бенчмарка, которая берет родные NumPy массивы,
-    достает из них сырые C-указатели и скармливает JIT-коду.
+    достает из них сырые C-указатели и отдает JIT-коду.
     """
     v_ptr = input_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
     out_ptr = output_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
