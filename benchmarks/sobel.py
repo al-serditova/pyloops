@@ -9,6 +9,21 @@ import pyloops
 import contextlib
 
 @contextlib.contextmanager
+def while_(cond):
+    pyloops.while_(cond)
+    try:
+        yield
+    finally:
+        pyloops.endwhile_()
+
+@contextlib.contextmanager 
+def if_(cond):
+    pyloops.if_(cond)
+    try:
+        yield
+    finally:
+        pyloops.endif_()
+        
 def indent():
     """Исключительно визуальный сдвиг кода для генератора"""
     yield
@@ -38,12 +53,12 @@ def generate_sobel_vectors(k_size):
     return smoothing, diff
 
 
-def sobel_python_arrays(in_array, out_array, width, height, k_size):
+def sobel_python_arrays(in_array, out_array, owidth, oheight, k_size):
     """
     Реализация 2D фильтра Собеля Gx над стандартным массивом Python (array.array).
     Размер ядра k_size параметризуется динамически.
     """
-    radius = k_size // 2
+    iwidth = owidth + k_size - 1
     kernel_y, kernel_x = generate_sobel_vectors(k_size)
 
     # Очищаем выходной массив нулями
@@ -51,32 +66,34 @@ def sobel_python_arrays(in_array, out_array, width, height, k_size):
         out_array[i] = 0.0
 
     # Основной цикл по внутренним пикселям изображения
-    for y in range(radius, height - radius):
-        for x in range(radius, width - radius):
+    for y in range(0, oheight):
+        for x in range(0, owidth):
             pixel_sum = 0.0
             
             # Свёртка скользящим окном
             for ky in range(k_size):
-                row_offset = (y + ky - radius) * width
+                row_offset = (y + ky) * iwidth
                 weight_y = kernel_y[ky]
                 
                 for kx in range(k_size):
-                    pixel_idx = row_offset + (x + kx - radius)
+                    pixel_idx = row_offset + (x + kx)
                     weight_x = kernel_x[kx]
                     
                     pixel_sum += in_array[pixel_idx] * (weight_y * weight_x)
             
-            out_array[y * width + x] = pixel_sum
+            out_array[y * owidth + x] = pixel_sum
  
-import numpy as np
-
-def sobel_numpy(input_array, output_array, width, height, k_size):
+def sobel_numpy(input_array, output_array, owidth, oheight, k_size):
     """
-    Высокооптимизированная NumPy реализация 2D Собеля Gx.
-    Принимает одномерные массивы float32, трансформирует в 2D 
-    и использует sliding_window_view для универсальной свертки.
+    Высокооптимизированная NumPy реализация 2D Собеля Gx (без паддинга).
+    Принимает одномерные массивы float32.
+    Размеры owidth и oheight задают геометрию ВЫХОДНОГО массива.
     """
     radius = k_size // 2
+    
+    # Вычисляем размеры исходного изображения на основе выходных размеров и k_size
+    width = owidth + k_size - 1
+    height = oheight + k_size - 1
     
     # Генерируем 1D-векторы
     # Вектор сглаживания через полиномиальное умножение [1, 1] само на себя
@@ -89,26 +106,45 @@ def sobel_numpy(input_array, output_array, width, height, k_size):
     diff = np.where(x_range == 0, 0.0, np.sign(x_range) * (radius - np.abs(x_range) + 1)).astype(np.float32)
     
     # Собираем полноценное 2D-ядро Собеля через внешнее произведение (Outer Product)
-    # kernel_2d[y, x] = smoothing[y] * diff[x]
     kernel_2d = np.outer(smoothing, diff).astype(np.float32)
     
-    # Решейп входного плоского массива в 2D-картинку
+    # Решейп входного плоского массива в полную 2D-картинку (с учетом вычисленных width и height)
     img_2d = input_array.reshape((height, width))
     
-    # Обнуляем выходной массив
+    # Обнуляем и решейпим выходной массив под oheight и owidth
     output_array.fill(0.0)
-    out_2d = output_array.reshape((height, width))
+    out_2d = output_array.reshape((oheight, owidth))
     
-    # Скользящие окна NumPy
+    # Скользящие окна NumPy. Так как img_2d имеет размер (oheight + k_size - 1, owidth + k_size - 1),
+    # то windows автоматически получит форму (oheight, owidth, k_size, k_size)
     windows = np.lib.stride_tricks.sliding_window_view(img_2d, (k_size, k_size))
     
-    # Перемножаем все окна на наше 2D-ядро по двум последним осям (свёртка)
-    # np.sum(windows * kernel_2d, axis=(2, 3))
-    # 'ij...,...kl->ij...' перемножаем последние оси окон на матрицу ядра и складываем
-    conv_result = np.einsum('ijkl,kl->ij', windows, kernel_2d)
-    
-    # Записываем результат во внутреннюю область выходного массива (сохраняя границы нулевыми)
-    out_2d[radius:height-radius, radius:width-radius] = conv_result
+    # Перемножаем окна на матрицу ядра и записываем результат прямо в out_2d.
+    # Благодаря валидным размерам входных данных, результат einsum идеально ложится в out_2d.
+    np.einsum('ijkl,kl->ij', windows, kernel_2d, out=out_2d)
+
+def vertical_sum(k_size, iptr, offset, iwidth):
+    kernel_y, _ = generate_sobel_vectors(k_size)
+    loadoffset = pyloops.IReg(offset)
+    vsum = pyloops.VReg(np.float32, pyloops.loadvec(np.float32, iptr, loadoffset))
+    loadoffset += iwidth
+    for kx in range(1, k_size-1):
+        justloaded = pyloops.VReg(np.float32, pyloops.loadvec(np.float32, iptr, loadoffset))
+        y_weight = pyloops.VReg(np.float32, kernel_y[kx])
+        vsum.assign = pyloops.fma(vsum, y_weight, justloaded)
+        loadoffset += iwidth
+    vsum += pyloops.VReg(np.float32, pyloops.loadvec(np.float32, iptr, loadoffset))
+    return vsum
+
+def extract_subvec(vsums, vsum, kpos):
+    lanes = pyloops.vbytes() // 4
+    v1num = kpos // lanes
+    v1 = vsums[v1num] if v1num < len(vsums) else vsum
+    offset = kpos % lanes
+    if offset == 0:
+        return v1
+    v2 = vsums[v1num + 1] if (v1num + 1) < len(vsums) else vsum
+    return pyloops.VReg(np.float32, pyloops.ext(v1,v2,offset))
 
 def compile_sobel_gx(k_size):
     """
@@ -121,6 +157,8 @@ def compile_sobel_gx(k_size):
     
     # Собираем все ненулевые коэффициенты.
     # Вместо готового byte_offset храним отдельно (delta_y, delta_x) в пикселях
+    print(f"Kernel X:{kernel_x}" )
+    print(f"Kernel Y:{kernel_y}" )
     active_weights = []
     for ky in range(k_size):
         dy = ky - radius  # Смещение по вертикали (в строках)
@@ -131,83 +169,68 @@ def compile_sobel_gx(k_size):
             weight = float(wy * wx)
             if weight != 0.0:
                 active_weights.append((dy, dx, weight))
-
     # =============================== Генерация loops-функции ===============================
     iptr = pyloops.IReg()
     optr = pyloops.IReg()
-    width = pyloops.IReg()
-    height = pyloops.IReg()
+    owidth = pyloops.IReg()
+    oheight = pyloops.IReg()
+    lanes = pyloops.vbytes() // 4
+    inputs_per_output = math.ceil(((k_size - 1) + (lanes - 1)) / lanes)
 
     func_name = f"sobel_gx_fma_k{k_size}"
     # Теперь у JIT-функции 4 входных параметра
-    pyloops.start_func(func_name, iptr, optr, width, height)
-
-    # Вычисляем общее количество байт во входном массиве: N_bytes = width * height * 4
-    n_bytes = pyloops.IReg(width)
-    n_bytes *= height
-    n_bytes *= 4
-
-    # Вычисляем шаг одной строки в байтах: row_stride_bytes = width * 4
-    row_stride_bytes = pyloops.IReg(width)
-    row_stride_bytes *= 4
-
-    # Границы обработки, чтобы не вылетать за верхний и нижний края (пропускаем radius строк)
-    start_offset = pyloops.IReg(row_stride_bytes)
-    start_offset *= radius
-
-    end_limit = pyloops.IReg(n_bytes)
-    end_limit -= start_offset
-
-    # Основной рабочий индекс смещения в байтах
-    offset = pyloops.IReg(start_offset)
-
-    pyloops.while_(offset < end_limit)
-    with indent():
-        # Инициализируем вектор-аккумулятор нулями
-        acc = pyloops.VReg(np.float32, 0.0)
-        
-        # Разворачиваем цикл свёртки (Loop Unrolling) в коде Python
-        for dy, dx, weight in active_weights:
-            # Считаем смещение для текущего соседа в рантайме JIT
-            # Базовое смещение = текущий offset
-            current_offset = pyloops.IReg(offset)
-            
-            # 1. Добавляем смещение по вертикали (dy * row_stride_bytes)
-            if dy != 0:
-                # Временный регистр для смещения строки
-                row_shift = pyloops.IReg(row_stride_bytes)
-                if abs(dy) > 1:
-                    row_shift *= abs(dy)
-                
-                if dy > 0:
-                    current_offset += row_shift
-                else:
-                    current_offset -= row_shift
-
-            # 2. Добавляем смещение по горизонтали (dx * 4 байта)
-            if dx != 0:
-                byte_shift_x = dx * 4
-                if byte_shift_x > 0:
-                    current_offset += byte_shift_x
-                else:
-                    current_offset -= abs(byte_shift_x)
-            
-            # Загружаем вектор данных (current_offset теперь гарантированно IReg)
-            v_data = pyloops.VReg(np.float32, pyloops.loadvec(np.float32, iptr, current_offset))
-            
-            # Создаем вектор-константу для веса
-            v_weight = pyloops.VReg(np.float32, weight)
-            
-            # Накапливаем через fma
-            acc = pyloops.fma(v_data, v_weight, acc)
-
-        # Сохраняем результат
-        pyloops.storevec(optr, offset, acc)
-
-        # Сдвигаем базовое смещение на ширину векторного регистра (в байтах)
-        offset += pyloops.vbytes()
-
-    pyloops.endwhile_()
+    pyloops.start_func(func_name, iptr, optr, owidth, oheight)
+    orow = pyloops.IReg(0)
+    owidth *= 4 # sizeof(float)
+    iwidth = pyloops.IReg(owidth + (4 * (k_size - 1)))
+    
+    with while_(orow < oheight):
+        vsums = []
+        ioffset = pyloops.IReg(0)
+        ooffset = pyloops.IReg(0)
+        for i in range(inputs_per_output - 1):
+            vsums.append(vertical_sum(k_size, iptr, ioffset, iwidth))
+            ioffset += pyloops.vbytes()
+        with while_(ooffset < owidth):
+            # Halide trick
+            with if_(ooffset + pyloops.vbytes() > owidth):
+                halideshift = pyloops.IReg(ooffset - owidth + pyloops.vbytes())
+                ooffset -= halideshift
+                halideshift += (inputs_per_output - 1) * pyloops.vbytes()
+                ioffset -= halideshift
+                for i in range(inputs_per_output - 1):
+                    vsums.append(vertical_sum(k_size, iptr, ioffset, iwidth))
+                    ioffset += pyloops.vbytes()
+            vsum = vertical_sum(k_size, iptr, ioffset, iwidth)
+            ioffset += pyloops.vbytes()
+            m1 = pyloops.VReg(np.float32, -1.0)
+            sum = pyloops.VReg(np.float32, m1 * vsums[0])
+            multiplier = m1
+            if k_size//2 > 1:
+                multiplier = pyloops.VReg(np.float32, m1 + m1)
+            for i in range(1, k_size//2):
+                kpos = i
+                extracted = extract_subvec(vsums, vsum, kpos)
+                sum.assign = pyloops.fma(sum, extracted, m1) 
+                if (i < k_size//2 - 1):
+                    multiplier += m1
+            multiplier *= m1
+            for i in range(k_size//2 + 1, k_size - 1):
+                kpos = i
+                extracted = extract_subvec(vsums, vsum, kpos)
+                sum.assign = pyloops.fma(sum, extracted, m1) 
+                if (i < k_size - 1):
+                    multiplier += m1
+            extracted = extract_subvec(vsums, vsum, k_size - 1)
+            sum.assign = pyloops.fma(sum, extracted, m1)
+            pyloops.storevec(optr, ooffset, sum)
+            for i in range(inputs_per_output - 1):
+                src = vsums[i + 1] if (i + 1) < len(vsums) else vsum
+                vsums[i].assign = src
+            ooffset += pyloops.vbytes()
+        iptr += iwidth
+        optr += owidth
+        orow += 1
     pyloops.return_()
     pyloops.end_func()
 
@@ -242,20 +265,22 @@ def verify_correctness():
     for K_SIZE in ksizes:
         WIDTH = 256
         HEIGHT = 256
+        OWIDTH = WIDTH - K_SIZE + 1
+        OHEIGHT = HEIGHT - K_SIZE + 1
         TOTAL_PIXELS = WIDTH * HEIGHT
+        OTOTAL_PIXELS = OWIDTH * OHEIGHT
         in_py = array.array('f', [float(i % 256) for i in range(TOTAL_PIXELS)])
-        out_py = array.array('f', [0.0] * TOTAL_PIXELS)
+        out_py = array.array('f', [0.0] * OTOTAL_PIXELS)
         in_np = np.array(in_py, dtype=np.float32)
-        out_np = np.zeros(TOTAL_PIXELS, dtype=np.float32)
-        out_loops = np.zeros(TOTAL_PIXELS, dtype=np.float32)
-        sobel_python_arrays(in_py, out_py, WIDTH, HEIGHT, K_SIZE)
-        sobel_numpy(in_np, out_np, WIDTH, HEIGHT, K_SIZE)
-        run_sobel_loops(in_np, out_loops, WIDTH, HEIGHT, K_SIZE)
+        out_np = np.zeros(OTOTAL_PIXELS, dtype=np.float32)
+        out_loops = np.zeros(OTOTAL_PIXELS, dtype=np.float32)
+        sobel_python_arrays(in_py, out_py, OWIDTH, OHEIGHT, K_SIZE)
+        sobel_numpy(in_np, out_np, OWIDTH, OHEIGHT, K_SIZE)
+        run_sobel_loops(in_np, out_loops, OWIDTH, OHEIGHT, K_SIZE)
         out_py_np = np.array(out_py, dtype=np.float32)
         py_vs_np_absdiff = np.abs(out_py_np - out_np)
         loops_vs_np_absdiff = np.abs(out_loops - out_np)
         py_vs_np_maxdiff = np.max(py_vs_np_absdiff)
-        print(py_vs_np_maxdiff)
         loops_vs_np_maxdiff = np.max(loops_vs_np_absdiff)
         if  py_vs_np_maxdiff < correctness_epsilon and loops_vs_np_maxdiff < correctness_epsilon:
             print(f"Тест на корректность пройден для размера ядра = {K_SIZE}!")
@@ -269,22 +294,25 @@ ksizes = [3, 5, 9]
 for K_SIZE in ksizes:
     WIDTH = 1024
     HEIGHT = 1024
+    OWIDTH = WIDTH - K_SIZE + 1
+    OHEIGHT = HEIGHT - K_SIZE + 1
     TOTAL_PIXELS = WIDTH * HEIGHT
+    OTOTAL_PIXELS = OWIDTH * OHEIGHT
 
     # Данные для чистого Python (array.array)
     in_data = array.array('f', [float(i % 256) for i in range(TOTAL_PIXELS)])
-    out_data = array.array('f', [0.0] * TOTAL_PIXELS)
+    out_data = array.array('f', [0.0] * OTOTAL_PIXELS)
 
     # Данные для NumPy и pyloops
     in_data_np = np.array(in_data, dtype=np.float32)
-    out_data_np = np.zeros(TOTAL_PIXELS, dtype=np.float32)
+    out_data_np = np.zeros(OTOTAL_PIXELS, dtype=np.float32)
 
     # Запуск бенчмарков
     print(f"Тест на стандартных массивах Python. KSize = {K_SIZE}")
-    run_benchmark(sobel_python_arrays, in_data, out_data, WIDTH, HEIGHT, K_SIZE, num_runs=10, warmup_runs=1)
+    run_benchmark(sobel_python_arrays, in_data, out_data, OWIDTH, OHEIGHT, K_SIZE, num_runs=10, warmup_runs=1)
 
     print(f"Тест на массивах NumPy. KSize = {K_SIZE}")
-    run_benchmark(sobel_numpy, in_data_np, out_data_np, WIDTH, HEIGHT, K_SIZE, num_runs=10, warmup_runs=1)
+    run_benchmark(sobel_numpy, in_data_np, out_data_np, OWIDTH, OHEIGHT, K_SIZE, num_runs=10, warmup_runs=1)
 
     print(f"Тест на векторизованном JIT pyloops. KSize = {K_SIZE}")
-    run_benchmark(run_sobel_loops, in_data_np, out_data_np, WIDTH, HEIGHT, K_SIZE, num_runs=10, warmup_runs=1)
+    run_benchmark(run_sobel_loops, in_data_np, out_data_np, OWIDTH, OHEIGHT, K_SIZE, num_runs=10, warmup_runs=1)
